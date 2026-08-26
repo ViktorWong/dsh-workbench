@@ -100,9 +100,10 @@ if (!gotLock) {
   app.on('second-instance', () => mainWindow?.show())
   app
     .whenReady()
-    .then(() => void bootstrap())
+    .then(() => bootstrap())
     .catch((err: unknown) => {
       console.error('[workbench] bootstrap failed:', err)
+      supervisor?.stop()
       dialog.showErrorBox(
         'dsh-workbench 启动失败',
         `无法启动 DeepSeek Harness 服务：\n\n${String(err)}\n\n详情请查看终端输出。`,

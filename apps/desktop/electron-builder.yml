@@ -7,6 +7,13 @@ files:
   - dist-renderer/**
   - package.json
 extraResources:
+  # Standalone dsh runtime (real node_modules, outside asar) — the packaged
+  # app resolves the dsh CLI from here. Produced by `pnpm prepare-runtime`.
+  # Point `from` at node_modules directly: electron-builder's copier drops
+  # node_modules dirs nested under the copied root.
+  - from: runtime/node_modules
+    to: runtime/node_modules
+    filter: ['**/*']
   # CI runs `pnpm pack` for plugins/* and copies the tarballs + manifest here.
   - from: resources/plugins
     to: plugins

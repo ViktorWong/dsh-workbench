@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
+import { app } from 'electron'
 
 /** Bundles every workbench profile must compose, in order. */
 const BASE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
@@ -17,10 +18,26 @@ export function dshHome(): string {
  * treat provisioning as non-fatal.
  */
 export async function provisionProfile(profile: string): Promise<void> {
-  for (const tgz of listBundledPlugins()) {
-    runDshPlugin(['plugin', '--profile', profile, 'add', tgz])
+  const pluginDirs = listPluginDirs()
+  const tarballs = pluginDirs.flatMap((dir) =>
+    readdirSync(dir)
+      .filter((f) => f.endsWith('.tgz'))
+      .map((f) => path.join(dir, f)),
+  )
+  // Remove previously installed workbench plugins first: the profile manifest
+  // references bundled tarballs by file: path, and re-adding while an older
+  // tarball file is missing makes pnpm fail on re-resolution. Plugin names are
+  // read from the manifest's dependencies — reversing pnpm pack's filename
+  // mangling is ambiguous.
+  for (const pkg of managedPluginNames(profile, pluginDirs)) {
+    await runDshPlugin(['plugin', '--profile', profile, 'remove', pkg], { allowFail: true })
   }
-  ensureBaseBundles(profile)
+  for (const tgz of tarballs) {
+    // One retry: profile-dir pnpm runs can fail transiently when a previous
+    // instance was killed mid-install (lock/store contention).
+    await runDshPlugin(['plugin', '--profile', profile, 'add', tgz], { retries: 1 })
+  }
+  await ensureBaseBundles(profile)
 }
 
 /** Full reset of the workbench profile (user-facing "reset" action). */
@@ -28,21 +45,26 @@ export async function resetProfile(profile: string): Promise<void> {
   runDshPlugin(['plugin', '--profile', profile, 'remove', '--all'])
 }
 
-function listBundledPlugins(): string[] {
+function listPluginDirs(): string[] {
   // Packaged app: electron-builder copies resources/plugins here.
   // Dev run: apps/desktop/resources/plugins (populated by pnpm pack + copy).
   const candidates = [
     path.join(process.resourcesPath, 'plugins'),
     path.join(__dirname, '..', 'resources', 'plugins'),
   ]
-  for (const dir of candidates) {
-    if (!existsSync(dir)) continue
-    const tgz = readdirSync(dir)
-      .filter((f) => f.endsWith('.tgz'))
-      .map((f) => path.join(dir, f))
-    if (tgz.length > 0) return tgz
+  return candidates.filter((dir) => existsSync(dir))
+}
+
+function managedPluginNames(profile: string, pluginDirs: string[]): string[] {
+  const manifestPath = path.join(dshHome(), 'profiles', profile, 'package.json')
+  if (!existsSync(manifestPath)) return []
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    dependencies?: Record<string, string>
   }
-  return []
+  return Object.entries(manifest.dependencies ?? {})
+    .filter(([, value]) => value.startsWith('file:'))
+    .filter(([, value]) => pluginDirs.some((dir) => value.includes(dir)))
+    .map(([name]) => name)
 }
 
 /**
@@ -74,16 +96,39 @@ function ensureBaseBundles(profile: string): void {
   }
 }
 
-function runDshPlugin(args: string[]): void {
-  const result = spawnSync(process.execPath, [resolveDshBin(), ...args], {
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
-    encoding: 'utf8',
-  })
-  if (result.status !== 0) {
-    throw new Error(`dsh ${args.join(' ')} failed: ${result.stderr?.trim() ?? result.status}`)
+async function runDshPlugin(
+  args: string[],
+  opts: { allowFail?: boolean; retries?: number } = {},
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const result = spawnSync(process.execPath, [resolveDshBin(), ...args], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      encoding: 'utf8',
+    })
+    if (result.status === 0) return
+    if (attempt < (opts.retries ?? 0)) {
+      // In-process sleep: never spawn another Electron instance for waiting
+      // (without ELECTRON_RUN_AS_NODE it would launch the whole app).
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+      continue
+    }
+    const err = new Error(
+      `dsh ${args.join(' ')} failed: ${result.stderr?.trim() ?? result.status}`,
+    )
+    if (opts.allowFail) return
+    throw err
   }
 }
 
+/**
+ * Where the packaged app finds the dsh CLI: a standalone runtime install
+ * shipped via extraResources (real files outside asar — dsh's module
+ * resolution cannot live inside asar; see ADR-002 §6 item 8). Dev runs
+ * resolve from the workspace node_modules instead.
+ */
 export function resolveDshBin(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'runtime', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  }
   return require.resolve('@deepseek-ai/dsh/lib/bin.js')
 }

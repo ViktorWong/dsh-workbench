@@ -27,4 +27,11 @@ pnpm --filter <plugin-pkg> pack    # 产出 tgz（CI 附到 Release 并打进桌
 
 | 包 | 说明 | 状态 |
 |----|------|------|
-| `@dsh-workbench/panel-workbench` | 工作台面板（占位骨架，功能待设计） | 🚧 骨架 |
+| `@dsh-workbench/panel-workbench` | `workbench_info` 诊断工具（agent 可调用的环境快照）；工作台 UI 开发中 | ✅ v0.2 可用 |
+
+## 产物验证
+
+```sh
+pnpm --filter @dsh-workbench/panel-workbench test    # 单测（注册/执行/可逆性）
+pnpm --filter @dsh-workbench/panel-workbench smoke   # 构建产物冒烟（lib/index.mjs 真实加载）
+```

@@ -10,6 +10,7 @@
 
 - **桌面壳**：Electron 应用，在应用内（ELECTRON_RUN_AS_NODE）托管 DSH 本地服务，无需用户自装 Node；提供托盘、单实例、崩溃自动重启、端口冲突自动协商
 - **配套插件**：基于 DSH 官方 Cordis 插件体系的增强插件集，通过专用 profile（`~/.dsh/profiles/dsh-workbench`）预装，不污染用户已有 DSH 环境
+- **首个插件功能**：`workbench_info` 诊断工具——agent 可调用的环境快照（版本/平台/运行时），排障时让 agent 跑一下即可收集环境信息
 
 技术决策见 [ADR-001](docs/design/adr/001-desktop-shell-electron-vs-tauri.md)（Electron 选型）与 [ADR-002](docs/design/adr/002-plugin-preinstall-and-distribution.md)（插件预装与分发）。
 

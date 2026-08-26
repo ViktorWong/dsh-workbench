@@ -20,4 +20,11 @@ export default tseslint.config(
       globals: { require: 'readonly', process: 'readonly' },
     },
   },
+  {
+    // Node-run smoke scripts (plain ESM, not TS).
+    files: ['**/scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { console: 'readonly', process: 'readonly' },
+    },
+  },
 )

@@ -34,3 +34,5 @@ dist-electron/
 dist-renderer/
 plugins/*/lib/
 plugins/*/*.tgz
+apps/desktop/runtime/
+apps/desktop/release/

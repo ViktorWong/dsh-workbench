@@ -84,13 +84,19 @@ plugins/<name>/
 - `plugins/*`：包结构按 §2.3 规范；CI 增加 pack 步骤
 - 后续 ADR-003：自动更新通道与插件版本联动（壳升级是否强制插件升级）
 
-## 6 实施勘误（v1.1，2026-08-26 实测）
+## 6 实施勘误（v1.2，2026-08-27 实测）
 
-首版实施（Electron 冒烟通过，HTTP 200 + 主界面渲染）中确认的三个文档未明示机制：
+首版实施（Electron 冒烟通过，HTTP 200 + 主界面渲染）中确认的机制：
 
 1. **profile 必须显式组合 `@deepseek-ai/dsh-web-app`**：`dsh plugin add` 首次初始化 profile 时只装 `@deepseek-ai/dsh-base`（无 Web 服务，进程静默等待）；官方 `web` profile 的 bundles 为 `[dsh-base, dsh-web-app]`。内置组合包从 dsh 安装目录解析，无需 pnpm 依赖。→ provisioning 在 add 后向 profile manifest 的 bundles 数组插入 `@deepseek-ai/dsh-web-app`
 2. **自定义 profile 用 `dsh --profile <name>` 直启**，不能用 `web` 子命令（`web` 是 `--profile web` 的别名，拒绝父级 `--profile`）；`--host/--port/--no-open` 等 Web 应用参数直接跟在 profile 后转发
 3. **直接 spawn dsh bin 需要 `--expose-internals`**：dsh-base 组合的 cordis-plugin-hmr 要求该 node flag；经 shell 包装启动时由包装器保证，Electron-as-Node 直接 spawn 时必须显式传给子进程
+4. **插件升级必须先 remove 后 add**：profile manifest 以 `file:` 绝对路径引用 tgz，旧 tgz 文件消失后 pnpm 重解析会整体失败；且受管插件名应从 manifest dependencies 的 key 读取（tgz 文件名反推包名有歧义）。→ provisioning 按"读 manifest → remove 受管插件 → add 新 tgz"执行
+5. **electron-builder 打包需调大 Node 堆**：dsh 依赖树 900+ 包，builder 的 node-module-collector 默认堆会 OOM；`NODE_OPTIONS=--max-old-space-size=8192` 解决
+6. **workspace 必须用 `node-linker=hoisted`**：DSH 包家族（150+ 个 `@deepseek-ai/*` 包）的包间导入大量未在 dependencies 中声明（如 dsh-app-boot 引 cordis-plugin-group），依赖"全家平铺在一个 node_modules"的解析假设（官方 dsh 即按此布局发布）。pnpm 符号链接布局 + electron-builder 按声明依赖收集会产出残缺树，打包应用启动即 `ERR_MODULE_NOT_FOUND`。→ 仓库根 `.npmrc` 设置 `node-linker=hoisted`
+7. **profile 内安装插件的 peer 警告属预期**：插件 peers（dsh-llm/dsh-session 等）由宿主运行时提供，profile 只装插件本体；pnpm 的 missing peer 警告不表示失败
+8. **dsh 运行时必须放在 asar 之外**：dsh-app-boot 按"dsh 安装位置 → profile 目录"双锚点解析 bundle 包并基于 profile 目录做 ESM 导入，这套解析在 asar 内部的虚拟路径上不可靠（打包应用启动即 `ERR_MODULE_NOT_FOUND` / loader entry 失败）。→ 桌面壳改为外置 runtime 方案：`apps/desktop/scripts/prepare-runtime.mjs` 产出独立的 `runtime/`（pnpm `--prod --ignore-workspace` + hoisted 安装 dsh 全家），electron-builder 以 extraResources 原样拷贝（注意：`from` 必须直接指向 `runtime/node_modules`，否则 copier 会丢弃嵌套的 node_modules 目录）；主进程打包态从 `Resources/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js` 解析 CLI。附带收益：asar 不再收集巨型依赖树，打包更快且不再 OOM
+9. **禁止 spawn 本进程做 sleep**：重试等待若 `spawn(execPath, ['-e', ...])` 而未带 `ELECTRON_RUN_AS_NODE`，Electron 会把参数当作应用参数**递归启动整个桌面应用**，造成进程风暴与 OOM 崩溃；等待必须用进程内 `setTimeout`
 
 ## 7 置信度统计
 
