@@ -1,0 +1,27 @@
+appId: com.dshworkbench.desktop
+productName: dsh-workbench
+directories:
+  output: release
+files:
+  - dist-electron/**
+  - dist-renderer/**
+  - package.json
+extraResources:
+  # CI runs `pnpm pack` for plugins/* and copies the tarballs + manifest here.
+  - from: resources/plugins
+    to: plugins
+    filter: ['**/*']
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage
+    - deb
+publish:
+  provider: github

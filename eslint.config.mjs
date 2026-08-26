@@ -1,0 +1,23 @@
+// @ts-check
+import eslint from '@eslint/js'
+import tseslint from 'typescript-eslint'
+
+export default tseslint.config(
+  { ignores: ['**/dist*/**', '**/lib/**', '**/release/**', '**/node_modules/**'] },
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    rules: {
+      // Keep the set minimal: correctness-focused, no stylistic noise.
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'error',
+    },
+  },
+  {
+    // Main-process code loads dsh via require.resolve at runtime.
+    files: ['apps/desktop/electron/**/*.ts'],
+    languageOptions: {
+      globals: { require: 'readonly', process: 'readonly' },
+    },
+  },
+)

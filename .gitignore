@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+out/
+build/
+*.tsbuildinfo
+
+# sessions & local state
+.sessions/
+.ai-metrics/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# env
+.env
+.env.local
+
+# editor
+.idea/
+.vscode/
+*.swp
+
+# electron
+release/
+resources/plugins/*.tgz
+
+# workspace build outputs
+dist-electron/
+dist-renderer/
+plugins/*/lib/
+plugins/*/*.tgz

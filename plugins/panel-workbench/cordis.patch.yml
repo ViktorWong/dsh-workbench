@@ -1,0 +1,3 @@
+- insert:
+  - id: workbench-panel
+    name: '@dsh-workbench/panel-workbench'
