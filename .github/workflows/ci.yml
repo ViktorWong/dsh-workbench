@@ -77,6 +77,9 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         shell: bash
         run: |
+          # Ad-hoc signing walks the whole bundled runtime tree; the default
+          # runner ulimit (256) hits EMFILE.
+          ulimit -n 10240 || true
           # Empty-string secrets must not leak as env vars — electron-builder
           # treats a defined-but-empty CSC_LINK as "sign with empty file".
           for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
