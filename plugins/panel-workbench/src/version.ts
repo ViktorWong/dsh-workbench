@@ -1,2 +1,2 @@
-// Keep in sync with package.json version (single visible constant for users).
-export const PLUGIN_VERSION = '0.2.0'
+// Keep in sync with package.json version and src/client.js PLUGIN_VERSION.
+export const PLUGIN_VERSION = '0.3.0'

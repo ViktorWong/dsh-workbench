@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { apply, inject, name } from '../src'
 
 function fakeCtx() {
@@ -15,7 +16,7 @@ function fakeCtx() {
   }
 }
 
-describe('workbench-panel plugin', () => {
+describe('workbench-panel plugin (host side)', () => {
   it('exports a plugin name and injects the tools registry', () => {
     expect(name).toBe('workbench-panel')
     expect(inject).toContain('tools')
@@ -50,5 +51,26 @@ describe('workbench-panel plugin', () => {
     )
     for (const cleanup of ctx.cleanups) cleanup()
     expect(ctx.logger.info).toHaveBeenCalledWith('[workbench-panel] unloaded')
+  })
+})
+
+describe('workbench-panel plugin (web client bundle)', () => {
+  const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
+
+  it('registers a factory via the __ModuleLoader__ handshake', () => {
+    expect(source).toContain('window.__ModuleLoader__.load({')
+    expect(source).toContain('"@dsh-workbench/panel-workbench"')
+  })
+
+  it('exports a web plugin (apply + inject) and hooks a settings slot', () => {
+    expect(source).toContain('exports.apply = apply')
+    expect(source).toContain('exports.inject = inject')
+    expect(source).toContain('"settings.section"')
+    // Client inject declares service keys; ctx.slots requires the "slots" key.
+    expect(source).toMatch(/var inject = \["slots"\]/)
+  })
+
+  it('declares the same version as the host side', () => {
+    expect(source).toMatch(/PLUGIN_VERSION = "0\.3\.0"/)
   })
 })

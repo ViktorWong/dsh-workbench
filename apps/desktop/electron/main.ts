@@ -41,6 +41,10 @@ function createWindow(url: string): void {
     mainWindow?.show()
     maybeSmoke()
   })
+  // Surface web-client errors (plugin bundles included) in the shell log.
+  mainWindow.webContents.on('console-message', (_e, _level, message, _line, sourceId) => {
+    if (_level >= 2) console.warn(`[web] ${sourceId}: ${message}`)
+  })
   void mainWindow.loadURL(url)
   mainWindow.on('closed', () => {
     mainWindow = null
