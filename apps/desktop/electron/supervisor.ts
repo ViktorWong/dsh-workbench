@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import * as net from 'node:net'
+import { sanitizedChildEnv } from './provisioning'
 
 export interface SupervisorOptions {
   /** Absolute path of the dsh CLI entry (lib/bin.js). */
@@ -117,7 +118,9 @@ export class DshSupervisor extends EventEmitter {
           '--no-open',
         ],
         {
-          env: { ...process.env, ...this.spawnEnv },
+          // Strip our launcher's workspace env so dsh's own pnpm calls (plugin
+          // loader) never mistake the profile dir for our repo workspace.
+          env: { ...sanitizedChildEnv(), ...this.spawnEnv },
           stdio: ['ignore', 'pipe', 'pipe'],
         },
       )

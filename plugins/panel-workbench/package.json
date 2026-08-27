@@ -1,7 +1,7 @@
 {
   "name": "@dsh-workbench/panel-workbench",
-  "version": "0.3.0",
-  "description": "Workbench panel plugin for DeepSeek Harness: environment diagnostics tool and workbench settings section",
+  "version": "0.4.0",
+  "description": "Workbench panel plugin for DeepSeek Harness: diagnostics tool, session stats and token usage panel",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.mjs",

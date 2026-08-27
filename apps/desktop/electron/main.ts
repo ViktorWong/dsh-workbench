@@ -42,8 +42,10 @@ function createWindow(url: string): void {
     maybeSmoke()
   })
   // Surface web-client errors (plugin bundles included) in the shell log.
-  mainWindow.webContents.on('console-message', (_e, _level, message, _line, sourceId) => {
-    if (_level >= 2) console.warn(`[web] ${sourceId}: ${message}`)
+  mainWindow.webContents.on('console-message', (event) => {
+    if (Number(event.level) >= 2) {
+      console.warn(`[web] ${event.sourceId}: ${event.message}`)
+    }
   })
   void mainWindow.loadURL(url)
   mainWindow.on('closed', () => {
@@ -57,13 +59,16 @@ function maybeSmoke(): void {
   console.log('SMOKE_OK')
   const delay = Number(process.env.WORKBENCH_SMOKE_DELAY_MS ?? 2_000)
   setTimeout(() => {
-    // Capture right before quitting so long-delay runs catch the loaded UI.
+    // Channel sanity: force a page-level console message, then capture.
     if (mainWindow) {
       void mainWindow.webContents
-        .capturePage()
-        .then((img) => {
-          writeFileSync(process.env.WORKBENCH_SMOKE_SHOT ?? '/tmp/workbench-smoke.png', img.toPNG())
-        })
+        .executeJavaScript("console.warn('SMOKE_CHANNEL_CHECK')")
+        .catch(() => {})
+        .then(() =>
+          mainWindow?.webContents.capturePage().then((img) => {
+            writeFileSync(process.env.WORKBENCH_SMOKE_SHOT ?? '/tmp/workbench-smoke.png', img.toPNG())
+          }),
+        )
         .catch(() => {})
         .finally(() => app.quit())
       return

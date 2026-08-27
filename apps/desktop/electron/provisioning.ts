@@ -96,13 +96,31 @@ function ensureBaseBundles(profile: string): void {
   }
 }
 
+/**
+ * dsh spawns pnpm inside the profile dir; inherited workspace context from
+ * our own launcher (`pnpm exec` sets INIT_CWD/npm_config_* pointing at the
+ * repo) makes that pnpm refuse with ERR_PNPM_ADDING_TO_ROOT. Strip the leak.
+ */
+export function sanitizedChildEnv(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue
+    if (key === 'INIT_CWD' || key.startsWith('PNPM_') || key.startsWith('npm_')) continue
+    env[key] = value
+  }
+  // Belt and braces: any pnpm the dsh child resolves must never refuse the
+  // profile-dir install with ERR_PNPM_ADDING_TO_ROOT.
+  env.npm_config_ignore_workspace_root_check = 'true'
+  return env
+}
+
 async function runDshPlugin(
   args: string[],
   opts: { allowFail?: boolean; retries?: number } = {},
 ): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     const result = spawnSync(process.execPath, [resolveDshBin(), ...args], {
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      env: { ...sanitizedChildEnv(), ELECTRON_RUN_AS_NODE: '1' },
       encoding: 'utf8',
     })
     if (result.status === 0) return
@@ -113,7 +131,9 @@ async function runDshPlugin(
       continue
     }
     const err = new Error(
-      `dsh ${args.join(' ')} failed: ${result.stderr?.trim() ?? result.status}`,
+      `dsh ${args.join(' ')} failed (exit ${result.status})\n` +
+        `stderr: ${result.stderr?.trim().slice(-800) ?? '(empty)'}\n` +
+        `stdout: ${result.stdout?.trim().slice(-800) ?? '(empty)'}`,
     )
     if (opts.allowFail) return
     throw err

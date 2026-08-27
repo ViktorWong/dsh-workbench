@@ -36,3 +36,4 @@ plugins/*/lib/
 plugins/*/*.tgz
 apps/desktop/runtime/
 apps/desktop/release/
+apps/desktop/resources/plugins/*.tgz

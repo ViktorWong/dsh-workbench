@@ -31,7 +31,7 @@ export default tseslint.config(
     // Browser-side plugin bundle authored directly in the shipped format.
     files: ['plugins/*/src/client.js'],
     languageOptions: {
-      globals: { window: 'readonly', document: 'readonly' },
+      globals: { window: 'readonly', document: 'readonly', console: 'readonly' },
     },
   },
 )

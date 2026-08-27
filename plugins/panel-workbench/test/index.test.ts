@@ -66,11 +66,17 @@ describe('workbench-panel plugin (web client bundle)', () => {
     expect(source).toContain('exports.apply = apply')
     expect(source).toContain('exports.inject = inject')
     expect(source).toContain('"settings.section"')
-    // Client inject declares service keys; ctx.slots requires the "slots" key.
-    expect(source).toMatch(/var inject = \["slots"\]/)
+    // Client inject declares service keys; ctx.slots/ctx.get need them.
+    expect(source).toMatch(/var inject = \["slots", "connection"\]/)
   })
 
   it('declares the same version as the host side', () => {
-    expect(source).toMatch(/PLUGIN_VERSION = "0\.3\.0"/)
+    expect(source).toMatch(/PLUGIN_VERSION = "0\.4\.0"/)
+  })
+
+  it('reads real data through the connection RPC face', () => {
+    expect(source).toContain('api.sessions.list({})')
+    expect(source).toContain('values.sessionStats')
+    expect(source).toContain('values.tokenUsage')
   })
 })
