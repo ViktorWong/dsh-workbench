@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Electron desktop shell hosting the DeepSeek Harness web service",
+  "repository": {
+    "type": "git",
+    "url": "github:ViktorWong/dsh-workbench"
+  },
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
