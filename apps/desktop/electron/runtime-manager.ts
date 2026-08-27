@@ -40,10 +40,20 @@ function userRuntimeStagingDir(): string {
   return path.join(app.getPath('userData'), 'runtime-next')
 }
 
-/** The dsh CLI entry of the working copy (dev runs resolve from the workspace). */
+/**
+ * The dsh CLI entry. Prefers the SIGNED bundled copy (inside the .app) so
+ * macOS Gatekeeper needs ONE approval covering everything; only switches to
+ * the userData working copy after an auto-update has been applied there
+ * (ADR-004: the bundle itself is never modified to keep its signature).
+ */
 export function resolveDshBin(): string {
   if (app.isPackaged) {
-    return path.join(userRuntimeDir(), 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+    const updated = readRuntimeStatus()
+    if (updated?.state === 'updated') {
+      const user = path.join(userRuntimeDir(), 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+      if (existsSync(user)) return user
+    }
+    return path.join(bundledRuntimeDir(), 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
   }
   return require.resolve('@deepseek-ai/dsh/lib/bin.js')
 }
@@ -59,13 +69,29 @@ export function runtimeVersion(dir: string): string | null {
   }
 }
 
-/** Ensure the userData working copy exists (first boot copies the template). */
+/**
+ * Ensure the userData working copy exists — but ONLY when an update has
+ * actually been applied there. The bundled copy inside the .app is the
+ * default runtime source: running from the signed bundle means Gatekeeper
+ * needs a single approval instead of one per userData binary.
+ */
 export function ensureRuntime(): string {
   const user = userRuntimeDir()
   if (existsSync(path.join(user, 'node_modules', '@deepseek-ai', 'dsh'))) return user
-  mkdirSync(path.dirname(user), { recursive: true })
-  cpSync(bundledRuntimeDir(), user, { recursive: true })
-  return user
+  // Deliberately do NOT pre-copy: userData runtime appears only after an
+  // update lands there via updateRuntime().
+  return bundledRuntimeDir()
+}
+
+/** Clear macOS provenance attributes so userData binaries don't re-trigger Gatekeeper. */
+function clearProvenance(dir: string): void {
+  if (process.platform !== 'darwin') return
+  try {
+    spawnSync('xattr', ['-r', '-d', 'com.apple.quarantine', dir], { stdio: 'ignore' })
+    spawnSync('xattr', ['-r', '-d', 'com.apple.provenance', dir], { stdio: 'ignore' })
+  } catch {
+    // Non-fatal: worst case the user re-approves once.
+  }
 }
 
 /** Reset the working copy back to the bundled template. */
@@ -170,6 +196,9 @@ export function updateRuntime(version: string): { ok: boolean; note: string } {
     rmSync(userRuntimeBackupDir(), { recursive: true, force: true })
     renameSync(userRuntimeDir(), userRuntimeBackupDir())
     renameSync(staging, userRuntimeDir())
+    // Clear macOS provenance so the new tree doesn't trigger per-binary
+    // Gatekeeper approvals outside the signed bundle.
+    clearProvenance(userRuntimeDir())
     return { ok: true, note: `runtime updated to ${version} (previous kept as runtime-backup)` }
   } catch (err) {
     return { ok: false, note: `update failed: ${String(err).slice(0, 300)}` }

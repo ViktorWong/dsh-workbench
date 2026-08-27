@@ -5,6 +5,9 @@ executableName: dsh-workbench
 # Uniform artifact names; also fixes deb deriving a "@dsh-workbench/" dir
 # from the scoped package name.
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+# Deep ad-hoc sign the whole bundle (incl. runtime tree) so macOS Gatekeeper
+# needs ONE approval instead of one per runtime binary.
+afterPack: ./scripts/after-pack.cjs
 directories:
   output: release
 files:

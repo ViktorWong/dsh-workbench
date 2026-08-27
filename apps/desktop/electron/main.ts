@@ -5,7 +5,6 @@ import { DshSupervisor } from './supervisor'
 import { provisionProfile } from './provisioning'
 import { resolveDshBin } from './runtime-manager'
 import {
-  ensureRuntime,
   fetchLatestDshVersion,
   rollbackRuntime,
   runtimeVersion,
@@ -127,11 +126,12 @@ function scheduleUpdateChecks(): void {
 }
 
 async function bootstrap(): Promise<void> {
-  // ADR-004: work on the userData runtime copy (first boot clones the
-  // bundled template); auto-update never touches the app bundle itself.
+  // ADR-004: run from the SIGNED bundled runtime by default (single
+  // Gatekeeper approval); userData copy appears only after an auto-update.
   if (app.isPackaged) {
-    ensureRuntime()
-    console.log(`[workbench] runtime ${runtimeVersion(userRuntimeDir())} at ${userRuntimeDir()}`)
+    const fromUser = resolveDshBin().includes('userData')
+    const runtimeDir = fromUser ? userRuntimeDir() : path.join(process.resourcesPath, 'runtime')
+    console.log(`[workbench] runtime ${runtimeVersion(runtimeDir)} (${fromUser ? 'userData' : 'bundled'})`)
     scheduleUpdateChecks()
   }
 

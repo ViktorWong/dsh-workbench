@@ -28,7 +28,7 @@ export default tseslint.config(
     },
   },
   {
-    // Node-run scripts: icon generator is plain CJS.
+    // Node-run scripts: icon generator and afterPack hook are plain CJS.
     files: ['apps/desktop/scripts/*.cjs'],
     languageOptions: {
       globals: {
@@ -37,6 +37,7 @@ export default tseslint.config(
         require: 'readonly',
         __dirname: 'readonly',
         setTimeout: 'readonly',
+        exports: 'readonly',
       },
     },
     rules: { '@typescript-eslint/no-require-imports': 'off' },
