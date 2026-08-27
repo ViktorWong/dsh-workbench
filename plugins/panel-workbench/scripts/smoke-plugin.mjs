@@ -15,6 +15,8 @@ const cleanups = []
 const ctx = {
   logger: { info: (...a) => console.log('[log]', ...a) },
   tools: { register: (t) => registered.push(t) },
+  webServer: { register: () => () => {} },
+  on: () => () => {},
   effect: (setup) => {
     const dispose = setup()
     cleanups.push(dispose)
