@@ -7,6 +7,7 @@ import { resolveDshBin } from './runtime-manager'
 import {
   ensureRuntime,
   fetchLatestDshVersion,
+  rollbackRuntime,
   runtimeVersion,
   shouldAutoUpdate,
   updateRuntime,
@@ -24,8 +25,10 @@ let tray: Tray | null = null
 let supervisor: DshSupervisor | null = null
 
 function createTray(): void {
-  // Placeholder empty image until a real tray icon asset is bundled.
-  tray = new Tray(nativeImage.createEmpty())
+  // Tray uses the bundled app icon (small); macOS renders it as-is.
+  const iconPath = path.join(__dirname, '..', 'build', 'icon.png')
+  const image = nativeImage.createFromPath(iconPath)
+  tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image.resize({ width: 16, height: 16 }))
   tray.setToolTip('dsh-workbench')
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -151,7 +154,26 @@ async function bootstrap(): Promise<void> {
     ).catch(() => {})
   })
 
-  const { url } = await supervisor.start()
+  let url: string
+  try {
+    ;({ url } = await supervisor.start())
+  } catch (err) {
+    // ADR-004 §2.4: a runtime that cannot boot (e.g. a broken auto-updated
+    // rc) falls back to runtime-backup exactly once, then retries.
+    if (app.isPackaged && rollbackRuntime()) {
+      console.error(`[workbench] boot failed (${String(err).slice(0, 200)}); rolled back to backup runtime`)
+      writeRuntimeStatus({ state: 'error', note: 'runtime failed to boot; rolled back to backup' })
+      supervisor = new DshSupervisor({
+        dshBin: resolveDshBin(),
+        profile: PROFILE,
+        preferredPort: PREFERRED_PORT,
+        spawnOptions: { execPath: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } },
+      })
+      ;({ url } = await supervisor.start())
+    } else {
+      throw err
+    }
+  }
   createWindow(url)
   createTray()
 }

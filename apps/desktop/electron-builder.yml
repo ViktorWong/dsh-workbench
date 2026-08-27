@@ -10,6 +10,8 @@ directories:
 files:
   - dist-electron/**
   - dist-renderer/**
+  # Tray icon (loaded by the main process from the asar).
+  - build/icon.png
   - package.json
 extraResources:
   # Standalone dsh runtime (real node_modules, outside asar) — the packaged

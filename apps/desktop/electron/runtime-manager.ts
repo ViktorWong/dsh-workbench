@@ -75,6 +75,25 @@ export function resetRuntime(): void {
   ensureRuntime()
 }
 
+/**
+ * One-level rollback (ADR-004 §2.4): swap the current working copy with
+ * runtime-backup. Callers retry booting once after a successful rollback.
+ */
+export function rollbackRuntime(): boolean {
+  const backup = userRuntimeBackupDir()
+  if (!existsSync(path.join(backup, 'node_modules', '@deepseek-ai', 'dsh'))) return false
+  const broken = path.join(path.dirname(userRuntimeDir()), 'runtime-broken')
+  rmSync(broken, { recursive: true, force: true })
+  try {
+    renameSync(userRuntimeDir(), broken)
+    renameSync(backup, userRuntimeDir())
+    rmSync(broken, { recursive: true, force: true })
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function fetchLatestDshVersion(): Promise<string | null> {
   try {
     const res = await fetch(NPM_DIST_TAGS_URL, {
