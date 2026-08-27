@@ -16,7 +16,12 @@ window.__ModuleLoader__.load({
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 		var PLUGIN_VERSION = "1.1.0";
 
-		var inject = ["connection", "sessions", "workspaces"];
+		// Only inject "connection": the session/workspace data comes through
+		// the connection service's RPC face (ctx.get("connection").api.sessions
+		// / .workspaces), not through separate cordis services. Injecting
+		// "sessions"/"workspaces" caused the fiber to wait for services whose
+		// availability ordering left .api uninitialized (race → undefined.list).
+		var inject = ["connection"];
 
 		var C = {
 			text: "#eceaf4", dim: "#9b96b8", faint: "#6d688d",

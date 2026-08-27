@@ -157,10 +157,10 @@ describe('workbench-panel plugin (web client bundle)', () => {
     expect(source).toContain('window.__ModuleLoader__.load({')
     expect(source).toContain('"@dsh-workbench/panel-workbench"')
   })
-  it('exports a web plugin with session-console injects', () => {
+  it('exports a web plugin with connection inject', () => {
     expect(source).toContain('exports.apply = apply')
     expect(source).toContain('exports.inject = inject')
-    expect(source).toMatch(/var inject = \["connection", "sessions", "workspaces"\]/)
+    expect(source).toMatch(/var inject = \["connection"\]/)
   })
   it('renders session cards with workspace grouping and fork tags', () => {
     expect(source).toContain('dshwb-scard')
