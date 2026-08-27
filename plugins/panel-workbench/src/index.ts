@@ -9,7 +9,6 @@ import { PLUGIN_VERSION } from './version'
 export const name = 'workbench-panel'
 
 export const inject = ['tools', 'webServer']
-
 /** Provider-reported usage for one step (token-meter's bucket semantics). */
 export interface UsageSample {
   inputTokens: number
@@ -207,6 +206,87 @@ export function activityOf(sessionKey: string, event: UsageEvent, now = Date.now
 }
 
 // ---------------------------------------------------------------------------
+// Subagent model configuration: read/write the profile's cordis.patch.yml
+// to set tool-subagent's agentOptions (provider + model).
+// ---------------------------------------------------------------------------
+
+export interface SubagentModelConfig {
+  provider: string
+  model: string
+  /** null = inherit parent session's model (DSH default) */
+  maxTokens?: number
+}
+
+function profilePatchPath(): string {
+  return path.join(dshHome(), 'profiles', 'dsh-workbench', 'cordis.patch.yml')
+}
+
+function parseProfilePatch(): string {
+  try {
+    return readFileSync(profilePatchPath(), 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+/** Read the current subagent model override from the profile patch. */
+export function readSubagentModel(): SubagentModelConfig | null {
+  const patch = parseProfilePatch()
+  // Simple YAML scan: look for agentOptions under tool-subagent
+  const match = patch.match(/tool-subagent[\s\S]*?agentOptions:[\s\S]*?provider:\s*(\S+)[\s\S]*?model:\s*(\S+)/)
+  if (!match) return null
+  return { provider: match[1] ?? '', model: match[2] ?? '' }
+}
+
+/**
+ * Write the subagent model override into the profile patch.
+ * Sets tool-subagent config.agentOptions so child agents use this model.
+ * Pass null to remove the override (revert to parent inheritance).
+ */
+export function writeSubagentModel(config: SubagentModel | null): void {
+  const patchPath = profilePatchPath()
+  const patch = parseProfilePatch()
+
+  // Strip the header comment to work with pure content; re-add later
+  const headerMatch = patch.match(/^(#[^\n]*\n)*?/)
+  const header = headerMatch ? headerMatch[0] : ''
+  let content = patch.slice(header.length).trim()
+
+  if (config === null) {
+    content = '[]'
+  } else {
+    const block = [
+      "- id: tool-subagent",
+      "  name: '@deepseek-ai/dsh-tool-subagent'",
+      '  config:',
+      '    agentOptions:',
+      `      provider: ${config.provider}`,
+      `      model: ${config.model}`,
+    ].join('\n')
+
+    if (content.includes('id: tool-subagent')) {
+      content = content.replace(
+        /- id: tool-subagent\n{2}name: '@deepseek-ai\/dsh-tool-subagent'\n{2}config:\n{4}agentOptions:\n{6}provider: \S+\n{6}model: \S+/,
+        block,
+      )
+    } else if (content === '[]' || content === '') {
+      content = block
+    } else {
+      content = content.replace(/\]$/, '').trimEnd() + '\n' + block
+    }
+  }
+
+  mkdirSync(path.dirname(patchPath), { recursive: true })
+  writeFileSync(patchPath, header + content + '\n')
+  // Signal the shell to restart dsh for the config to take effect
+  const signalPath = path.join(dshHome(), 'workbench', 'restart-signal')
+  mkdirSync(path.dirname(signalPath), { recursive: true })
+  writeFileSync(signalPath, String(Date.now()))
+}
+
+type SubagentModel = SubagentModelConfig
+
+// ---------------------------------------------------------------------------
 // Host plugin
 // ---------------------------------------------------------------------------
 
@@ -304,12 +384,63 @@ export function apply(ctx: Context): void {
     },
   })
 
+  // Subagent model configuration (GET current + POST to set)
+  const offSubagentRoute = registerRoute.register({
+    kind: 'exact',
+    path: '/api/workbench/subagent-model',
+    handler: async (req, res) => {
+      res.setHeader('content-type', 'application/json')
+      const httpReq = req as {
+        method?: string
+        on?: (event: string, cb: (chunk?: Buffer) => void) => void
+      }
+
+      if (httpReq.method === 'OPTIONS') {
+        res.setHeader('access-control-allow-origin', '*')
+        res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS')
+        res.setHeader('access-control-allow-headers', 'content-type')
+        res.end('')
+        return
+      }
+
+      if (httpReq.method === 'POST') {
+        try {
+          // Read the body from the raw IncomingMessage stream
+          const body = await new Promise<string>((resolve) => {
+            let data = ''
+            httpReq.on?.('data', (chunk?: Buffer) => {
+              data += chunk?.toString() ?? ''
+            })
+            httpReq.on?.('end', () => resolve(data))
+          })
+          const parsed = JSON.parse(body) as { provider?: string; model?: string; clear?: boolean }
+          if (parsed.clear) {
+            writeSubagentModel(null)
+          } else if (parsed.provider && parsed.model) {
+            writeSubagentModel({ provider: parsed.provider, model: parsed.model })
+          } else {
+            res.end(JSON.stringify({ error: 'provider and model required' }))
+            return
+          }
+          res.end(JSON.stringify({ ok: true, restartNeeded: true }))
+        } catch (err) {
+          res.end(JSON.stringify({ error: String(err) }))
+        }
+        return
+      }
+
+      // GET: return current config
+      res.end(JSON.stringify({ current: readSubagentModel() }))
+    },
+  })
+
   ctx.effect(() => {
     return () => {
       offEvents()
       offUsageRoute()
       offActivityRoute()
       offStatusRoute()
+      offSubagentRoute()
       ledger.dispose()
     }
   })

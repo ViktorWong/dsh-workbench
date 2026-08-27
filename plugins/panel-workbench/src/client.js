@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		var PLUGIN_VERSION = "1.0.0";
+		var PLUGIN_VERSION = "1.1.0";
 
 		var inject = ["connection", "sessions", "workspaces"];
 
@@ -83,7 +83,19 @@ window.__ModuleLoader__.load({
 			".dshwb-tev.err .desc{color:" + C.pink + ";}",
 			".dshwb-empty{color:" + C.faint + ";font-size:12px;padding:20px 0;text-align:center;}",
 			".dshwb-err{color:" + C.pink + ";font-size:12px;padding:10px 0;}",
-			".dshwb-foot{padding:8px 16px;border-top:1px solid " + C.border + ";color:" + C.faint + ";font-size:10px;display:flex;justify-content:space-between;flex:none;}",
+			// Subagent model config styles
+		".dshwb-samodel{margin-bottom:14px;padding:11px 13px;border:1px solid " + C.border + ";border-radius:12px;background:rgba(255,255,255,.02);}",
+		".dshwb-samodel .hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;font-weight:600;color:" + C.dim + ";text-transform:uppercase;letter-spacing:.4px;}",
+		".dshwb-samodel .hint{font-size:10.5px;color:" + C.faint + ";margin-bottom:8px;}",
+		".dshwb-samodel .row{display:flex;gap:8px;align-items:center;}",
+		".dshwb-select{flex:1;padding:6px 10px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(15,14,23,.8);color:" + C.text + ";font-size:12px;font-family:inherit;outline:none;cursor:pointer;}",
+		".dshwb-select:focus{border-color:rgba(167,139,250,.5);}",
+		".dshwb-select option{background:#14121f;color:" + C.text + ";}",
+		".dshwb-samodel .cur{font-size:11px;color:" + C.valueColor + ";font-variant-numeric:tabular-nums;}",
+		".dshwb-restart{margin-top:8px;padding:6px 10px;border:1px solid rgba(251,191,36,.3);border-radius:8px;background:rgba(251,191,36,.08);font-size:11px;color:" + C.amber + ";display:none;}",
+		".dshwb-restart.show{display:block;}",
+
+		".dshwb-foot{padding:8px 16px;border-top:1px solid " + C.border + ";color:" + C.faint + ";font-size:10px;display:flex;justify-content:space-between;flex:none;}",
 			".dshwb-runtime{margin-bottom:12px;padding:7px 11px;border:1px solid rgba(167,139,250,.3);border-radius:10px;background:rgba(130,87,255,.08);font-size:11.5px;color:" + C.valueColor + ";font-variant-numeric:tabular-nums;}",
 			".dshwb-runtime b{color:#fff;font-weight:600;}",
 		].join("\n");
@@ -188,6 +200,18 @@ window.__ModuleLoader__.load({
 			var res = await fetch("/api/workbench/runtime-status", { headers: { accept: "application/json" } });
 			return res.ok ? await res.json() : null;
 		}
+		async function fetchSubagentModel() {
+			var res = await fetch("/api/workbench/subagent-model", { headers: { accept: "application/json" } });
+			return res.ok ? await res.json() : null;
+		}
+		async function setSubagentModel(provider, model) {
+			var res = await fetch("/api/workbench/subagent-model", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(provider && model ? { provider: provider, model: model } : { clear: true }),
+			});
+			return res.ok ? await res.json() : null;
+		}
 
 		function chartNode(series) {
 			var max = 1;
@@ -270,20 +294,55 @@ window.__ModuleLoader__.load({
 			}));
 		}
 
-		function renderStatsTab(data, daily) {
-			var t = data.totals;
-			return el("div", null, [
-				el("div", { class: "dshwb-grid" }, [
-					el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "会话 / 进行中" }), el("div", { class: "v", text: t.sessions + " / " + t.active })]),
-					el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "轮次 / 步骤" }), el("div", { class: "v", text: t.turns + " / " + t.steps })]),
-					el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "输入 tokens" }), el("div", { class: "v", text: fmtTokens(t.input) })]),
-					el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "输出 tokens" }), el("div", { class: "v", text: fmtTokens(t.output) })]),
-					el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "模型时间" }), el("div", { class: "v", text: fmtDuration(t.llmMs) })]),
-					el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "工具时间" }), el("div", { class: "v", text: fmtDuration(t.toolMs) })]),
-				]),
-				daily ? chartNode(daily.series) : el("div", { class: "dshwb-empty", text: "趋势加载中…" }),
-			]);
+		function renderSubagentModelSection(currentModel, availableModels, onChange) {
+			var select = el("select", { class: "dshwb-select" })
+			// Default option: inherit parent
+			select.appendChild(el("option", { value: "", text: "继承父会话模型（默认）" }))
+			if (availableModels) {
+				for (var group of availableModels) {
+					var og = el("optgroup", { label: group.name || group.id })
+					for (var m of group.models || []) {
+						var val = group.id + "/" + m.id
+						var opt = el("option", { value: val, text: m.name || m.id })
+						if (currentModel && currentModel.provider === group.id && currentModel.model === m.id) {
+							opt.selected = true
+						}
+						og.appendChild(opt)
+					}
+					select.appendChild(og)
+				}
+			}
+			select.addEventListener("change", function () {
+				var v = select.value
+				if (!v) onChange(null, null)
+				else {
+					var parts = v.split("/")
+					onChange(parts[0], parts.slice(1).join("/"))
+				}
+			})
+			return el("div", { class: "dshwb-samodel" }, [
+				el("div", { class: "hdr" }, ["🤖 Subagent 模型"]),
+				el("div", { class: "hint", text: "指定子代理使用的模型（不影响主会话）。更改后需重启应用生效。" }),
+				el("div", { class: "row" }, [select]),
+				currentModel ? el("div", { class: "cur", text: "当前：" + currentModel.provider + " / " + currentModel.model }) : null,
+			])
 		}
+
+			function renderStatsTab(data, daily, subagentModel, availableModels, onModelChange) {
+				var t = data.totals;
+				return el("div", null, [
+					el("div", { class: "dshwb-grid" }, [
+						el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "会话 / 进行中" }), el("div", { class: "v", text: t.sessions + " / " + t.active })]),
+						el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "轮次 / 步骤" }), el("div", { class: "v", text: t.turns + " / " + t.steps })]),
+						el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "输入 tokens" }), el("div", { class: "v", text: fmtTokens(t.input) })]),
+						el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "输出 tokens" }), el("div", { class: "v", text: fmtTokens(t.output) })]),
+						el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "模型时间" }), el("div", { class: "v", text: fmtDuration(t.llmMs) })]),
+						el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "工具时间" }), el("div", { class: "v", text: fmtDuration(t.toolMs) })]),
+					]),
+					daily ? chartNode(daily.series) : el("div", { class: "dshwb-empty", text: "趋势加载中…" }),
+					renderSubagentModelSection(subagentModel, availableModels, onModelChange),
+				]);
+			}
 
 		function createPanel(ctx) {
 			var styleEl = el("style", { "data-plugin": "@dsh-workbench/panel-workbench" });
@@ -294,6 +353,7 @@ window.__ModuleLoader__.load({
 				expanded: localStorage.getItem("dshwb.expanded") === "1",
 				tab: localStorage.getItem("dshwb.tab") || "sessions",
 				data: null, daily: null, activity: null, runtime: null,
+				subagentModel: null, availableModels: null,
 				error: null, cards: [],
 			};
 			var api = null;
@@ -330,7 +390,7 @@ window.__ModuleLoader__.load({
 				else if (!state.data) bodyContent = el("div", { class: "dshwb-empty", text: "加载中…" });
 				else if (state.tab === "sessions") bodyContent = renderSessionsTab(state.cards, openSession);
 				else if (state.tab === "activity") bodyContent = renderActivityTab(state.activity);
-				else bodyContent = renderStatsTab(state.data, state.daily);
+				else bodyContent = renderStatsTab(state.data, state.daily, state.subagentModel, state.availableModels, onSubagentModelChange);
 
 				var runtimeLine = null;
 				if (state.runtime && state.runtime.current) {
@@ -376,6 +436,21 @@ window.__ModuleLoader__.load({
 				if (state.expanded) refresh();
 			}
 
+			async function onSubagentModelChange(provider, model) {
+				try {
+					var result = await setSubagentModel(provider, model);
+					if (result && result.ok) {
+						state.subagentModel = provider && model ? { provider: provider, model: model } : null;
+						render();
+						// Show a restart notice
+						var notice = document.querySelector(".dshwb-restart");
+						if (notice) notice.classList.add("show");
+					}
+				} catch (e) {
+					console.warn("[workbench-panel] subagent model change failed:", e);
+				}
+			}
+
 			async function refresh() {
 				if (!api) return;
 				try {
@@ -388,6 +463,19 @@ window.__ModuleLoader__.load({
 				}
 				try { state.daily = await fetchDaily(); } catch { state.daily = null; }
 				try { state.runtime = await fetchRuntimeStatus(); } catch { state.runtime = null; }
+				try {
+					var sa = await fetchSubagentModel();
+					state.subagentModel = sa && sa.current ? sa.current : null;
+				} catch { state.subagentModel = null; }
+				try {
+					// Get available models from the first non-blank session
+					if (api && state.cards && state.cards.length > 0) {
+						var modelsRes = await api.sessions.models({ sessionId: state.cards[0].id });
+						if (modelsRes.result.ok) {
+							state.availableModels = modelsRes.result.value.groups;
+						}
+					}
+				} catch { state.availableModels = null; }
 				render();
 			}
 

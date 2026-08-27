@@ -51,7 +51,7 @@ describe('workbench-panel plugin (host side)', () => {
     apply(ctx as never)
     expect(ctx.tools.register).toHaveBeenCalledOnce()
     expect((ctx.tools.register.mock.calls[0]?.[0] as { name: string }).name).toBe('workbench_info')
-    expect(ctx.webServer.register).toHaveBeenCalledTimes(3)
+    expect(ctx.webServer.register).toHaveBeenCalledTimes(4)
     const paths = ctx.webServer.register.mock.calls.map(
       (call) => (call[0] as unknown as { path: string }).path,
     )
@@ -60,6 +60,7 @@ describe('workbench-panel plugin (host side)', () => {
         '/api/workbench/usage-daily',
         '/api/workbench/activity',
         '/api/workbench/runtime-status',
+        '/api/workbench/subagent-model',
       ]),
     )
     expect(ctx.effect.mock.calls[0]?.[0] as unknown).toBeTypeOf('function')
@@ -185,6 +186,6 @@ describe('workbench-panel plugin (web client bundle)', () => {
     expect(source).not.toMatch(/background-clip:\s*text/)
   })
   it('declares the same version as the host side', () => {
-    expect(source).toMatch(/PLUGIN_VERSION = "1\.0\.0"/)
+    expect(source).toMatch(/PLUGIN_VERSION = "1\.1\.0"/)
   })
 })
