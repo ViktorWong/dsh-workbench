@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="icon" width="1024" height="1024"></canvas>
+    <script>
+      // dsh-workbench icon: dark indigo rounded square, violet→cyan glow,
+      // terminal prompt ">_" — the agent harness motif.
+      const c = document.getElementById('icon')
+      const ctx = c.getContext('2d')
+      const S = 1024
+      const r = S * 0.225 // macOS-ish corner radius
+
+      // Transparent background, rounded-square base with vertical gradient.
+      function roundedRect(x, y, w, h, r) {
+        ctx.beginPath()
+        ctx.moveTo(x + r, y)
+        ctx.arcTo(x + w, y, x + w, y + h, r)
+        ctx.arcTo(x + w, y + h, x, y + h, r)
+        ctx.arcTo(x, y + h, x, y, r)
+        ctx.arcTo(x, y, x + w, y, r)
+        ctx.closePath()
+      }
+      roundedRect(0, 0, S, S, r)
+      const bg = ctx.createLinearGradient(0, 0, 0, S)
+      bg.addColorStop(0, '#221a4d')
+      bg.addColorStop(0.55, '#151033')
+      bg.addColorStop(1, '#0d0a1f')
+      ctx.fillStyle = bg
+      ctx.fill()
+
+      // Soft radial glow behind the glyph (violet top-left, cyan bottom-right).
+      ctx.save()
+      roundedRect(0, 0, S, S, r)
+      ctx.clip()
+      let glow = ctx.createRadialGradient(S * 0.32, S * 0.28, 0, S * 0.32, S * 0.28, S * 0.55)
+      glow.addColorStop(0, 'rgba(130, 87, 255, 0.55)')
+      glow.addColorStop(1, 'rgba(130, 87, 255, 0)')
+      ctx.fillStyle = glow
+      ctx.fillRect(0, 0, S, S)
+      glow = ctx.createRadialGradient(S * 0.74, S * 0.8, 0, S * 0.74, S * 0.8, S * 0.5)
+      glow.addColorStop(0, 'rgba(34, 211, 238, 0.4)')
+      glow.addColorStop(1, 'rgba(34, 211, 238, 0)')
+      ctx.fillStyle = glow
+      ctx.fillRect(0, 0, S, S)
+      ctx.restore()
+
+      // Inner hairline border.
+      ctx.save()
+      roundedRect(14, 14, S - 28, S - 28, r - 10)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)'
+      ctx.lineWidth = 10
+      ctx.stroke()
+      ctx.restore()
+
+      // Glyph: terminal prompt ">" + cursor "_", gradient-filled.
+      const grad = ctx.createLinearGradient(S * 0.24, S * 0.3, S * 0.8, S * 0.74)
+      grad.addColorStop(0, '#a78bfa')
+      grad.addColorStop(0.55, '#8257ff')
+      grad.addColorStop(1, '#22d3ee')
+      ctx.strokeStyle = grad
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+
+      // ">": two strokes, chunky.
+      const lw = 86
+      ctx.lineWidth = lw
+      const gx = S * 0.3
+      const gy = S * 0.34
+      const gm = S * 0.5 // mid
+      const gye = S * 0.66
+      const gxe = S * 0.44
+      ctx.beginPath()
+      ctx.moveTo(gx, gy)
+      ctx.lineTo(gxe + S * 0.06, gm)
+      ctx.lineTo(gx, gye)
+      ctx.stroke()
+
+      // "_": baseline cursor bar.
+      ctx.beginPath()
+      ctx.moveTo(S * 0.54, gye)
+      ctx.lineTo(S * 0.74, gye)
+      ctx.stroke()
+
+      // Glow pass for the glyph.
+      ctx.save()
+      ctx.globalCompositeOperation = 'lighter'
+      ctx.strokeStyle = 'rgba(130, 87, 255, 0.35)'
+      ctx.lineWidth = lw + 26
+      ctx.beginPath()
+      ctx.moveTo(gx, gy)
+      ctx.lineTo(gxe + S * 0.06, gm)
+      ctx.lineTo(gx, gye)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(S * 0.54, gye)
+      ctx.lineTo(S * 0.74, gye)
+      ctx.stroke()
+      ctx.restore()
+
+      console.log('ICON_READY')
+    </script>
+  </body>
+</html>

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>dsh-workbench — DeepSeek Harness 桌面工作台</title>
+    <meta name="description" content="开箱即用的 DeepSeek Harness 桌面端：Electron 壳托管本地服务，配套 Cordis 插件生态。" />
+    <link rel="icon" type="image/png" href="icon.png" />
+    <style>
+      :root {
+        --bg: #0f0e17;
+        --bg-soft: #14121f;
+        --text: #eaeaf0;
+        --text-dim: #a6a6b5;
+        --violet: #8257ff;
+        --violet-light: #a78bfa;
+        --cyan: #22d3ee;
+        --pink: #ff5e8a;
+        --card-border: rgba(255, 255, 255, 0.08);
+        --gradient: linear-gradient(96deg, #a78bfa, #8257ff 45%, #22d3ee);
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+        line-height: 1.65;
+        overflow-x: hidden;
+      }
+      a { color: inherit; text-decoration: none; }
+      .container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+      /* ambient glows */
+      .glow { position: fixed; border-radius: 50%; filter: blur(140px); pointer-events: none; z-index: 0; }
+      .glow-1 { top: -180px; left: -120px; width: 520px; height: 520px; background: rgba(130, 87, 255, 0.28); }
+      .glow-2 { bottom: -200px; right: -100px; width: 460px; height: 460px; background: rgba(34, 211, 238, 0.16); }
+
+      nav {
+        position: sticky; top: 0; z-index: 10;
+        backdrop-filter: blur(14px);
+        background: rgba(15, 14, 23, 0.7);
+        border-bottom: 1px solid var(--card-border);
+      }
+      nav .container { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+      .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+      .logo-mark {
+        width: 30px; height: 30px; border-radius: 8px;
+        background: linear-gradient(160deg, #221a4d, #0d0a1f);
+        border: 1px solid var(--card-border);
+        display: inline-flex; align-items: center; justify-content: center;
+        font-family: ui-monospace, monospace; font-size: 14px; font-weight: 700;
+        color: var(--violet-light);
+        box-shadow: 0 0 18px rgba(130, 87, 255, 0.35);
+      }
+      nav .links { display: flex; gap: 22px; font-size: 14px; color: var(--text-dim); }
+      nav .links a:hover { color: var(--text); }
+      .gh-btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        border: 1px solid var(--card-border); border-radius: 10px;
+        padding: 7px 14px; font-size: 13px; color: var(--text);
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .gh-btn:hover { border-color: rgba(130, 87, 255, 0.5); box-shadow: 0 0 20px rgba(130, 87, 255, 0.18); }
+
+      section { position: relative; z-index: 1; }
+
+      .hero { text-align: center; padding: 110px 24px 90px; }
+      .hero .badge {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-size: 12.5px; color: var(--text-dim);
+        border: 1px solid var(--card-border); border-radius: 999px;
+        padding: 5px 14px; margin-bottom: 26px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .hero .badge b { color: var(--violet-light); font-weight: 600; }
+      h1 { font-size: clamp(38px, 6vw, 64px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.12; }
+      h1 .grad { background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .hero p.sub { color: var(--text-dim); font-size: clamp(15px, 2.2vw, 18px); max-width: 620px; margin: 22px auto 0; }
+      .hero .cta { margin-top: 38px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+      .btn-primary {
+        background: var(--gradient); color: #0c0a17; font-weight: 700;
+        border-radius: 12px; padding: 13px 26px; font-size: 15px;
+        box-shadow: 0 8px 30px rgba(130, 87, 255, 0.35);
+      }
+      .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 36px rgba(130, 87, 255, 0.5); }
+      .btn-ghost {
+        border: 1px solid var(--card-border); border-radius: 12px;
+        padding: 13px 26px; font-size: 15px; color: var(--text);
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .btn-ghost:hover { border-color: rgba(34, 211, 238, 0.5); }
+
+      .section-title { text-align: center; font-size: clamp(26px, 3.6vw, 36px); font-weight: 800; letter-spacing: -0.01em; margin-bottom: 10px; }
+      .section-sub { text-align: center; color: var(--text-dim); max-width: 560px; margin: 0 auto 46px; font-size: 15px; }
+
+      .features { padding: 40px 0 80px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+      .card {
+        border: 1px solid var(--card-border); border-radius: 18px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
+        padding: 24px; transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      .card:hover { border-color: rgba(130, 87, 255, 0.45); box-shadow: 0 0 32px rgba(130, 87, 255, 0.12); }
+      .card .ico { font-size: 24px; margin-bottom: 12px; }
+      .card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+      .card p { color: var(--text-dim); font-size: 13.5px; }
+
+      .download { padding: 60px 0 90px; }
+      .dl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+      .dl-card {
+        border: 1px solid var(--card-border); border-radius: 18px; text-align: center;
+        padding: 30px 22px; background: rgba(255, 255, 255, 0.02);
+        transition: border-color 0.2s, transform 0.15s;
+      }
+      .dl-card:hover { border-color: rgba(34, 211, 238, 0.5); transform: translateY(-2px); }
+      .dl-card .os { font-size: 15px; font-weight: 700; }
+      .dl-card .arch { color: var(--text-dim); font-size: 12.5px; margin: 4px 0 16px; }
+      .dl-card .fmt { font-family: ui-monospace, monospace; font-size: 12px; color: var(--violet-light); }
+      .notice {
+        max-width: 680px; margin: 30px auto 0; border: 1px solid rgba(255, 94, 138, 0.35);
+        background: rgba(255, 94, 138, 0.06); border-radius: 14px; padding: 16px 20px;
+        font-size: 13.5px; color: var(--text-dim); text-align: left;
+      }
+      .notice b { color: var(--pink); }
+      .notice code {
+        font-family: ui-monospace, monospace; font-size: 12.5px;
+        background: rgba(255, 255, 255, 0.06); padding: 2px 7px; border-radius: 6px; color: var(--text);
+      }
+
+      .stats { padding: 40px 0 90px; }
+      .stat-band {
+        border: 1px solid var(--card-border); border-radius: 22px;
+        background: linear-gradient(180deg, rgba(130, 87, 255, 0.08), rgba(34, 211, 238, 0.04));
+        padding: 36px 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 18px; text-align: center;
+      }
+      .stat .num { font-size: clamp(28px, 4vw, 40px); font-weight: 800; background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; font-variant-numeric: tabular-nums; }
+      .stat .lbl { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+      .plugin-note { text-align: center; color: var(--text-dim); font-size: 13.5px; margin-top: 20px; }
+
+      footer { border-top: 1px solid var(--card-border); padding: 34px 0 44px; color: var(--text-dim); font-size: 13px; text-align: center; }
+      footer a { color: var(--violet-light); }
+      footer a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <div class="glow glow-1"></div>
+    <div class="glow glow-2"></div>
+
+    <nav>
+      <div class="container">
+        <a class="logo" href="#top"><span class="logo-mark">&gt;_</span>dsh-workbench</a>
+        <div class="links">
+          <a href="#features">功能</a>
+          <a href="#download">下载</a>
+          <a href="#stats">插件</a>
+          <a class="gh-btn" href="https://github.com/ViktorWong/dsh-workbench" target="_blank" rel="noopener">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+            GitHub</a>
+        </div>
+      </div>
+    </nav>
+
+    <section class="hero" id="top">
+      <div class="badge">基于 <b>@deepseek-ai/dsh</b> · MIT 开源 · macOS / Windows / Linux</div>
+      <h1>DeepSeek Harness<br /><span class="grad">桌面工作台</span></h1>
+      <p class="sub">开箱即用的桌面端：应用内托管 DSH 本地服务，无需自装 Node；专用 Profile 隔离环境，不碰你已有的 DSH 配置；配套 Cordis 插件持续增强。</p>
+      <div class="cta">
+        <a class="btn-primary" href="#download">下载安装</a>
+        <a class="btn-ghost" href="https://github.com/ViktorWong/dsh-workbench" target="_blank" rel="noopener">查看源码</a>
+      </div>
+    </section>
+
+    <section class="features" id="features">
+      <div class="container">
+        <h2 class="section-title">桌面壳带来了什么</h2>
+        <p class="section-sub">不只是把网页装进窗口——围绕 DSH 的进程模型做了完整的桌面工程化。</p>
+        <div class="grid">
+          <div class="card"><div class="ico">🚀</div><h3>零依赖启动</h3><p>Electron 内嵌 Node 直接运行 DSH 服务（默认 127.0.0.1:3080），终端用户无需安装任何运行时。</p></div>
+          <div class="card"><div class="ico">🛡️</div><h3>环境隔离</h3><p>一切运行在专用 Profile（~/.dsh/profiles/dsh-workbench）内，插件预装与升级不污染你现有的 DSH 环境。</p></div>
+          <div class="card"><div class="ico">♻️</div><h3>进程健壮性</h3><p>健康检查、崩溃指数退避重启、端口冲突自动协商、优雅退出无孤儿进程。</p></div>
+          <div class="card"><div class="ico">🧩</div><h3>插件生态</h3><p>配套 Cordis 插件随应用分发：诊断工具、会话统计与 token 用量面板，持续迭代中。</p></div>
+          <div class="card"><div class="ico">📦</div><h3>独立运行时</h3><p>DSH 全家运行时以真实文件随包分发（asar 之外），模块解析与官方安装行为一致，升级零冲突。</p></div>
+          <div class="card"><div class="ico">🔧</div><h3>可诊断</h3><p>Web 控制台错误透传到应用日志；让 agent 运行 workbench_info 即可采集环境快照。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="stats" id="stats">
+      <div class="container">
+        <h2 class="section-title">Workbench 面板</h2>
+        <p class="section-sub">内置插件的统计面板基于 DSH 全日志投影——压缩与分页都不会改变数字。</p>
+        <div class="stat-band">
+          <div class="stat"><div class="num">12</div><div class="lbl">会话</div></div>
+          <div class="stat"><div class="num">128</div><div class="lbl">累计轮次</div></div>
+          <div class="stat"><div class="num">1.2M</div><div class="lbl">输出 tokens</div></div>
+          <div class="stat"><div class="num">4.5h</div><div class="lbl">模型时间</div></div>
+        </div>
+        <p class="plugin-note">示意数据 · 面板显示会话数 / 轮次步骤 / 模型与工具耗时 / 输入输出与缓存 tokens / 最近会话列表</p>
+      </div>
+    </section>
+
+    <section class="download" id="download">
+      <div class="container">
+        <h2 class="section-title">下载安装</h2>
+        <p class="section-sub">安装包由 GitHub Actions 自动构建并发布。</p>
+        <div class="dl-grid">
+          <a class="dl-card" href="https://github.com/ViktorWong/dsh-workbench/releases" target="_blank" rel="noopener">
+            <div class="ico">🍎</div>
+            <div class="os">macOS</div>
+            <div class="arch">Apple Silicon · Intel</div>
+            <div class="fmt">.dmg / .zip</div>
+          </a>
+          <a class="dl-card" href="https://github.com/ViktorWong/dsh-workbench/releases" target="_blank" rel="noopener">
+            <div class="ico">🪟</div>
+            <div class="os">Windows</div>
+            <div class="arch">x64</div>
+            <div class="fmt">.exe 安装器</div>
+          </a>
+          <a class="dl-card" href="https://github.com/ViktorWong/dsh-workbench/releases" target="_blank" rel="noopener">
+            <div class="ico">🐧</div>
+            <div class="os">Linux</div>
+            <div class="arch">x86_64</div>
+            <div class="fmt">.AppImage / .deb</div>
+          </a>
+        </div>
+        <div class="notice">
+          <b>ⓘ macOS 首次打开：</b>当前发布包为 ad-hoc 签名（正式签名公证后此提示将消失）。若被 Gatekeeper 拦截，请右键点击应用 →「打开」；或执行
+          <code>xattr -cr /Applications/dsh-workbench.app</code>。<b>Windows</b> 遇到 SmartScreen 时选择「更多信息 → 仍要运行」。
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="container">
+        <p><a href="https://github.com/ViktorWong/dsh-workbench">GitHub</a> · 基于 <a href="https://github.com/deepseek-ai/deepseek-harness" target="_blank" rel="noopener">DeepSeek Harness</a> 的社区项目 · MIT License</p>
+        <p style="margin-top:6px;">本站由 GitHub Pages 自动部署</p>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,56 +1,46 @@
 # dsh-workbench
 
-> DeepSeek Harness 的开源桌面工作台 —— Electron 桌面壳 + 配套 Cordis 插件集。
+> The open-source desktop workbench for DeepSeek Harness — an Electron shell hosting the local DSH service, with companion Cordis plugins.
 
-**状态**：🏗 v0.1 —— 桌面壳可用（启动/托管 DSH Web 服务、插件预装、托盘、优雅退出）。
+**English** | [简体中文](README.zh-CN.md)
 
-## 是什么
+[![License: MIT](https://img.shields.io/badge/License-MIT-8257ff.svg)](LICENSE)
+![macOS](https://img.shields.io/badge/platform-macOS%20%28ARM64%20%7C%20x64%29-333) ![Windows](https://img.shields.io/badge/platform-Windows%20x64-333) ![Linux](https://img.shields.io/badge/platform-Linux%20x86__64-333)
 
-[DeepSeek Harness (DSH)](https://deepseek-harness.github.io/deepseek-harness/) 是 DeepSeek 官方开源的 AI Agent 工具，以本地 Node 进程 + Web UI 形态运行。dsh-workbench 为它提供一个开箱即用的桌面端：
+[Website](https://viktorwong.github.io/dsh-workbench/) · [Downloads](https://github.com/ViktorWong/dsh-workbench/releases)
 
-- **桌面壳**：Electron 应用，在应用内（ELECTRON_RUN_AS_NODE）托管 DSH 本地服务，无需用户自装 Node；提供托盘、单实例、崩溃自动重启、端口冲突自动协商
-- **配套插件**：基于 DSH 官方 Cordis 插件体系的增强插件集，通过专用 profile（`~/.dsh/profiles/dsh-workbench`）预装，不污染用户已有 DSH 环境
-- **首个插件功能**：`workbench_info` 诊断工具——agent 可调用的环境快照（版本/平台/运行时），排障时让 agent 跑一下即可收集环境信息
+## What is this
 
-技术决策见 [ADR-001](docs/design/adr/001-desktop-shell-electron-vs-tauri.md)（Electron 选型）与 [ADR-002](docs/design/adr/002-plugin-preinstall-and-distribution.md)（插件预装与分发）。
+[DeepSeek Harness (DSH)](https://deepseek-harness.github.io/deepseek-harness/) is DeepSeek's open-source AI agent tool that runs as a local Node process with a web UI. dsh-workbench turns it into a desktop app:
 
-## 快速开始
+- **Desktop shell** — an Electron app hosting the DSH service in-process (`ELECTRON_RUN_AS_NODE`), no Node.js install required; tray, single instance, crash backoff restart, port-conflict negotiation, graceful shutdown.
+- **Companion plugins** — Cordis-plugin enhancements shipped with the app: a `workbench_info` diagnostics tool and a Workbench settings section with real session stats and token usage (whole-log projections).
+- **Isolated profile** — everything runs in a dedicated profile (`~/.dsh/profiles/dsh-workbench`); your existing DSH setup is untouched.
+
+Technical decisions are recorded as ADRs in [docs/design/](docs/design/) — notably [ADR-001](docs/design/adr/001-desktop-shell-electron-vs-tauri.md) (why Electron) and [ADR-002](docs/design/adr/002-plugin-preinstall-and-distribution.md) (plugin preinstall via a dedicated profile).
+
+## Install
+
+Grab an installer from the [releases page](https://github.com/ViktorWong/dsh-workbench/releases): dmg (Apple Silicon / Intel), NSIS exe (Windows), AppImage / deb (Linux).
+
+> **macOS first launch**: builds are ad-hoc signed until a Developer ID certificate is configured. If Gatekeeper blocks the app, right-click it → **Open**, or run `xattr -cr /Applications/dsh-workbench.app`. On Windows, choose **More info → Run anyway** on the SmartScreen prompt.
+
+## Develop
 
 ```sh
 pnpm install
-pnpm build                      # 构建桌面壳与插件
-pnpm --filter @dsh-workbench/desktop start   # 启动桌面应用
+pnpm build                                    # build shell + plugins
+pnpm --filter @dsh-workbench/desktop start    # launch the desktop app
+
+# smoke run (auto-starts and quits, captures a screenshot)
+cd apps/desktop && WORKBENCH_SMOKE=1 WORKBENCH_SMOKE_DELAY_MS=10000 pnpm exec electron .
 ```
 
-应用启动后自动：初始化专用 profile → 预装配套插件（`apps/desktop/resources/plugins/*.tgz`）→ 拉起 DSH 服务（默认 127.0.0.1:3080，被占用自动换端口）→ 窗口加载 DSH Web UI。
+Repository layout: `apps/desktop` (Electron shell), `plugins/` (Cordis plugins), `docs/design/` (ADRs), `.claude|.zcode|.opencode` (a 6-agent AI collaboration config, see [docs/agents-design](docs/agents-design/README.md)).
 
-冒烟测试（自动启动并退出，产出截图）：
+## Status
 
-```sh
-cd apps/desktop
-WORKBENCH_SMOKE=1 WORKBENCH_SMOKE_DELAY_MS=15000 ./node_modules/.bin/electron .
-# 预期输出 SMOKE_OK；截图写入 /tmp/workbench-smoke.png
-```
-
-## 仓库结构
-
-```
-apps/desktop/          # Electron 桌面壳（electron/ 主进程 + src/ 渲染层）
-plugins/               # 配套 Cordis 插件（panel-workbench 起步）
-docs/design/           # 设计文档与 ADR
-.claude/ .zcode/ .opencode/   # AI 协作配置（三 harness 同步）
-```
-
-## AI 协作配置
-
-本仓库内置一套多智能体开发配置（6 个 dsh-* 智能体 + 共享基础设施），支持 Claude / ZCode / OpenCode 三种 harness。详见 [docs/agents-design/README.md](docs/agents-design/README.md) 与 [AGENTS.md](AGENTS.md)。
-
-## 安全与签名
-
-当前发布产物**未签名**（签名证书方案见 [ADR-003](docs/design/adr/003-signing-notarization-update-channel.md)，证书就绪后同一流水线自动切换为签名+公证包）：
-
-- **macOS**：首次打开若被拦截，右键点击应用 →「打开」，或执行 `xattr -cr /Applications/dsh-workbench.app`
-- **Windows**：SmartScreen 提示时选择「更多信息 → 仍要运行」
+Early preview, tracking `@deepseek-ai/dsh@0.1.1-rc.2`. The DSH runtime ships as a standalone, asar-external tree inside the app; version bumps are locked and smoke-tested.
 
 ## License
 

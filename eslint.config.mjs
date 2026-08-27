@@ -28,6 +28,20 @@ export default tseslint.config(
     },
   },
   {
+    // Node-run scripts: icon generator is plain CJS.
+    files: ['apps/desktop/scripts/*.cjs'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        require: 'readonly',
+        __dirname: 'readonly',
+        setTimeout: 'readonly',
+      },
+    },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     // Browser-side plugin bundle authored directly in the shipped format.
     files: ['plugins/*/src/client.js'],
     languageOptions: {

@@ -25,6 +25,12 @@ extraResources:
     filter: ['**/*']
 mac:
   category: public.app-category.developer-tools
+  # Ad-hoc signature: unsigned downloads show as "damaged" on modern macOS;
+  # ad-hoc lets them open via right-click → Open. Replace with a real
+  # Developer ID identity once a cert is configured (ADR-003 §2.2).
+  identity: "-"
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
   target:
     - dmg
     - zip

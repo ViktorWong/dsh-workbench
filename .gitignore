@@ -5,7 +5,8 @@ node_modules/
 # build
 dist/
 out/
-build/
+# (keep apps/desktop/build — it ships the icon + mac entitlements)
+!apps/desktop/build/
 *.tsbuildinfo
 
 # sessions & local state
