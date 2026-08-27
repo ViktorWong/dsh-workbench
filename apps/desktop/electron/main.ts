@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Tray } from 'electron'
-import { writeFileSync } from 'node:fs'
+import { statSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { DshSupervisor } from './supervisor'
 import { provisionProfile } from './provisioning'
@@ -125,6 +126,43 @@ function scheduleUpdateChecks(): void {
   setInterval(() => void check().catch(() => writeRuntimeStatus({ state: 'error' })), UPDATE_CHECK_INTERVAL_MS)
 }
 
+/**
+ * Watch for the subagent-model restart signal (written by the host plugin
+ * when the user changes the model); restart dsh gracefully.
+ */
+function watchRestartSignal(): void {
+  const signalFile = path.join(
+    process.env.DSH_HOME ?? path.join(homedir(), '.dsh'),
+    'workbench', 'restart-signal',
+  )
+  let lastSignal = 0
+  setInterval(() => {
+    try {
+      const stat = statSync(signalFile)
+      if (stat.mtimeMs > lastSignal && lastSignal > 0) {
+        console.log('[workbench] restart signal detected — restarting dsh…')
+        // Graceful stop then fresh start in the next tick
+        supervisor?.stop()
+        setTimeout(() => {
+          supervisor = new DshSupervisor({
+            dshBin: resolveDshBin(),
+            profile: PROFILE,
+            preferredPort: PREFERRED_PORT,
+            spawnOptions: { execPath: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } },
+          })
+          void supervisor.start().then(({ url }) => {
+            void mainWindow?.loadURL(url)
+            console.log('[workbench] dsh restarted at', url)
+          })
+        }, 2_000)
+      }
+      lastSignal = stat.mtimeMs
+    } catch {
+      // File doesn't exist yet — normal
+    }
+  }, 3_000)
+}
+
 async function bootstrap(): Promise<void> {
   // ADR-004: run from the SIGNED bundled runtime by default (single
   // Gatekeeper approval); userData copy appears only after an auto-update.
@@ -133,6 +171,7 @@ async function bootstrap(): Promise<void> {
     const runtimeDir = fromUser ? userRuntimeDir() : path.join(process.resourcesPath, 'runtime')
     console.log(`[workbench] runtime ${runtimeVersion(runtimeDir)} (${fromUser ? 'userData' : 'bundled'})`)
     scheduleUpdateChecks()
+    watchRestartSignal()
   }
 
   // ADR-002: install companion plugins into the dedicated profile.

@@ -1,6 +1,6 @@
 {
   "name": "@dsh-workbench/panel-workbench",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Session console with subagent model routing, activity timeline, usage trends",
   "license": "MIT",
   "type": "module",

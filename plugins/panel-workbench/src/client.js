@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		var PLUGIN_VERSION = "1.1.0";
+		var PLUGIN_VERSION = "1.2.0";
 
 		// Only inject "connection": the session/workspace data comes through
 		// the connection service's RPC face (ctx.get("connection").api.sessions
@@ -99,6 +99,21 @@ window.__ModuleLoader__.load({
 		".dshwb-samodel .cur{font-size:11px;color:" + C.valueColor + ";font-variant-numeric:tabular-nums;}",
 		".dshwb-restart{margin-top:8px;padding:6px 10px;border:1px solid rgba(251,191,36,.3);border-radius:8px;background:rgba(251,191,36,.08);font-size:11px;color:" + C.amber + ";display:none;}",
 		".dshwb-restart.show{display:block;}",
+
+		// Search bar
+		".dshwb-search{width:100%;padding:8px 12px;border:1px solid " + C.border + ";border-radius:10px;background:rgba(255,255,255,.03);color:" + C.text + ";font-size:12px;font-family:inherit;outline:none;margin-bottom:10px;transition:border-color .15s;}",
+		".dshwb-search:focus{border-color:rgba(167,139,250,.4);}",
+		".dshwb-search::placeholder{color:" + C.faint + ";}",
+
+		// Approval toast
+		".dshwb-toast{position:fixed;top:18px;right:18px;z-index:2147483600;padding:12px 16px;border-radius:12px;border:1px solid rgba(251,191,36,.4);background:linear-gradient(160deg,#2d2210,#1a1508);backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 20px rgba(251,191,36,.15);font-family:'Inter','PingFang SC',system-ui,sans-serif;font-size:13px;color:#fbbf24;cursor:pointer;animation:dshwb-slidein .25s ease-out;max-width:340px;}",
+		".dshwb-toast .t{font-weight:600;margin-bottom:4px;}",
+		".dshwb-toast .d{font-size:11.5px;color:#d4b896;}",
+		"@keyframes dshwb-slidein{from{transform:translateX(100%);opacity:0;}to{transform:translateX(0);opacity:1;}}",
+
+		// Drag handle
+		".dshwb-drag{cursor:grab;user-select:none;}",
+		".dshwb-drag:active{cursor:grabbing;}",
 
 		".dshwb-foot{padding:8px 16px;border-top:1px solid " + C.border + ";color:" + C.faint + ";font-size:10px;display:flex;justify-content:space-between;flex:none;}",
 			".dshwb-runtime{margin-bottom:12px;padding:7px 11px;border:1px solid rgba(167,139,250,.3);border-radius:10px;background:rgba(130,87,255,.08);font-size:11.5px;color:" + C.valueColor + ";font-variant-numeric:tabular-nums;}",
@@ -360,13 +375,81 @@ window.__ModuleLoader__.load({
 				data: null, daily: null, activity: null, runtime: null,
 				subagentModel: null, availableModels: null,
 				error: null, cards: [],
+				searchQuery: "",
 			};
 			var api = null;
 			var timer = null;
 			var activityTimer = null;
+			var lastApprovalTs = 0;
 
 			var root = el("div", { class: "dshwb-root" });
+			// Restore drag position
+			try {
+				var pos = JSON.parse(localStorage.getItem("dshwb.pos") || "null");
+				if (pos) {
+					root.style.right = "auto";
+					root.style.bottom = "auto";
+					root.style.left = pos.x + "px";
+					root.style.top = pos.y + "px";
+				}
+			} catch { /* position restore is best-effort */ }
 			document.body.appendChild(root);
+
+			// Drag support on the pill/card header
+			function makeDraggable(handle) {
+				var isDragging = false;
+				var startX = 0, startY = 0, startLeft = 0, startTop = 0;
+				handle.classList.add("dshwb-drag");
+				handle.addEventListener("mousedown", function (e) {
+					if (e.target.tagName === "BUTTON" || e.target.tagName === "SELECT") return;
+					isDragging = true;
+					var rect = root.getBoundingClientRect();
+					startLeft = rect.left;
+					startTop = rect.top;
+					startX = e.clientX;
+					startY = e.clientY;
+					root.style.right = "auto";
+					root.style.bottom = "auto";
+					e.preventDefault();
+				});
+				document.addEventListener("mousemove", function (e) {
+					if (!isDragging) return;
+					var x = Math.max(0, Math.min(window.innerWidth - 100, startLeft + e.clientX - startX));
+					var y = Math.max(0, Math.min(window.innerHeight - 50, startTop + e.clientY - startY));
+					root.style.left = x + "px";
+					root.style.top = y + "px";
+				});
+				document.addEventListener("mouseup", function () {
+					if (!isDragging) return;
+					isDragging = false;
+					var rect = root.getBoundingClientRect();
+					localStorage.setItem("dshwb.pos", JSON.stringify({ x: rect.left, y: rect.top }));
+				});
+			}
+
+			// Approval toast
+			function checkForApprovals() {
+				if (!state.activity || !state.activity.events) return;
+				for (var ev of state.activity.events) {
+					if (ev.kind === "approval" && ev.ts > lastApprovalTs) {
+						lastApprovalTs = ev.ts;
+						showApprovalToast(ev);
+					}
+				}
+			}
+			function showApprovalToast(ev) {
+				var existing = document.querySelector(".dshwb-toast");
+				if (existing) existing.remove();
+				var toast = el("div", {
+					class: "dshwb-toast",
+					onclick: function () { toast.remove(); },
+				}, [
+					el("div", { class: "t", text: "⚠️ 等待审批" }),
+					el("div", { class: "d", text: ev.label }),
+				]);
+				document.body.appendChild(toast);
+				setTimeout(function () { toast.remove(); }, 10_000);
+			}
 
 			function openSession(card) {
 				try {
@@ -380,20 +463,45 @@ window.__ModuleLoader__.load({
 			function render() {
 				root.innerHTML = "";
 				if (!state.expanded) {
-					root.appendChild(el("div", { class: "dshwb-pill", onclick: toggle }, [
+					var pill = el("div", { class: "dshwb-pill", onclick: toggle }, [
 						el("span", { class: "dshwb-dot" }),
 						el("span", null, ["Workbench "]),
 						state.data ? el("b", { text: String(state.data.totals.sessions) }) : el("span", { class: "muted", text: "…" }),
 						el("span", { class: "muted", text: " 会话" }),
 						state.data && state.data.totals.active > 0 ? el("span", { class: "muted", text: " · ● " + state.data.totals.active }) : null,
-					]));
+					]);
+					root.appendChild(pill);
+					makeDraggable(pill);
 					return;
 				}
 
 				var bodyContent;
 				if (state.error) bodyContent = el("div", { class: "dshwb-err", text: "加载失败：" + state.error });
 				else if (!state.data) bodyContent = el("div", { class: "dshwb-empty", text: "加载中…" });
-				else if (state.tab === "sessions") bodyContent = renderSessionsTab(state.cards, openSession);
+				else if (state.tab === "sessions") {
+					// Search bar + filtered session cards
+					var filtered = state.searchQuery
+						? state.cards.filter(function (c) {
+								return (
+									c.title.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
+									c.workspace.toLowerCase().includes(state.searchQuery.toLowerCase())
+								)
+							})
+						: state.cards;
+					bodyContent = el("div", null, [
+						el("input", {
+							class: "dshwb-search",
+							type: "text",
+							placeholder: "搜索会话或工作区…",
+							value: state.searchQuery,
+							oninput: function (e) {
+								state.searchQuery = e.target.value;
+								render();
+							},
+						}),
+						renderSessionsTab(filtered, openSession),
+					]);
+				}
 				else if (state.tab === "activity") bodyContent = renderActivityTab(state.activity);
 				else bodyContent = renderStatsTab(state.data, state.daily, state.subagentModel, state.availableModels, onSubagentModelChange);
 
@@ -406,7 +514,7 @@ window.__ModuleLoader__.load({
 					]);
 				}
 
-				root.appendChild(el("div", { class: "dshwb-card" }, [
+				var cardEl = el("div", { class: "dshwb-card" }, [
 					el("div", { class: "dshwb-head" }, [
 						el("div", { class: "dshwb-title" }, [el("span", { class: "dshwb-dot" }), "Workbench", el("span", { class: "sub", text: "v" + PLUGIN_VERSION })]),
 						el("div", { class: "dshwb-tabs" }, [
@@ -421,10 +529,13 @@ window.__ModuleLoader__.load({
 					]),
 					el("div", { class: "dshwb-body" }, [runtimeLine, bodyContent]),
 					el("div", { class: "dshwb-foot" }, [
-						el("span", { text: "点击会话卡片可跳转" }),
+						el("span", { text: "点击卡片跳转 · 拖拽标题移动" }),
 						el("span", { text: "60s 自动刷新" }),
 					]),
-				]));
+				]);
+				root.appendChild(cardEl);
+				var headEl = cardEl.querySelector(".dshwb-head");
+				if (headEl) makeDraggable(headEl);
 			}
 
 			function setTab(tab) {
@@ -486,6 +597,7 @@ window.__ModuleLoader__.load({
 
 			async function refreshActivity() {
 				try { state.activity = await fetchActivity(); } catch { state.activity = null; }
+				checkForApprovals();
 				if (state.tab === "activity") render();
 			}
 
