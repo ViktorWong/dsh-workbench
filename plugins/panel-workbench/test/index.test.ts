@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
 import {
+  ActivityRing,
   DailyUsageLedger,
+  activityOf,
   todayKey,
   usageOf,
   apply,
@@ -45,19 +46,22 @@ describe('workbench-panel plugin (host side)', () => {
     expect(inject).toEqual(['tools', 'webServer'])
   })
 
-  it('registers the workbench_info tool and both API routes', () => {
+  it('registers workbench_info tool and all API routes', () => {
     const ctx = fakeCtx()
     apply(ctx as never)
     expect(ctx.tools.register).toHaveBeenCalledOnce()
     expect((ctx.tools.register.mock.calls[0]?.[0] as { name: string }).name).toBe('workbench_info')
-    expect(ctx.webServer.register).toHaveBeenCalledTimes(2)
+    expect(ctx.webServer.register).toHaveBeenCalledTimes(3)
     const paths = ctx.webServer.register.mock.calls.map(
       (call) => (call[0] as unknown as { path: string }).path,
     )
     expect(paths).toEqual(
-      expect.arrayContaining(['/api/workbench/usage-daily', '/api/workbench/runtime-status']),
+      expect.arrayContaining([
+        '/api/workbench/usage-daily',
+        '/api/workbench/activity',
+        '/api/workbench/runtime-status',
+      ]),
     )
-    // The effect must DISPOSE on unload, not immediately during apply.
     expect(ctx.effect.mock.calls[0]?.[0] as unknown).toBeTypeOf('function')
     for (const cleanup of ctx.cleanups) cleanup()
   })
@@ -66,16 +70,11 @@ describe('workbench-panel plugin (host side)', () => {
 describe('usageOf', () => {
   it('reads usage from a usage chunk', () => {
     const usage = { inputTokens: 10, outputTokens: 5 }
-    expect(
-      usageOf({ type: 'assistant/chunk', turn: 1, step: 1, data: { chunk: { type: 'usage', usage } } }),
-    ).toEqual(usage)
+    expect(usageOf({ type: 'assistant/chunk', turn: 1, step: 1, data: { chunk: { type: 'usage', usage } } })).toEqual(usage)
   })
-
   it('reads usage from an assembled assistant message', () => {
-    const usage = { inputTokens: 7, outputTokens: 3 }
-    expect(usageOf({ type: 'assistant/message', turn: 2, step: 4, data: { usage } })).toEqual(usage)
+    expect(usageOf({ type: 'assistant/message', turn: 2, step: 4, data: { usage: { inputTokens: 7, outputTokens: 3 } } })).toEqual({ inputTokens: 7, outputTokens: 3 })
   })
-
   it('returns undefined for other events', () => {
     expect(usageOf({ type: 'turn/start', turn: 1 })).toBeUndefined()
   })
@@ -91,32 +90,26 @@ describe('DailyUsageLedger', () => {
     expect(today.o).toBe(70)
     expect(today.cr).toBe(10)
   })
-
   it('replaces same session/turn/step samples instead of double counting', () => {
     const ledger = newLedger()
     ledger.record('s1', 1, 1, { inputTokens: 100, outputTokens: 10 })
-    // streaming usage chunk then finalized message for the same step
     ledger.record('s1', 1, 1, { inputTokens: 120, outputTokens: 15 })
-    const today = ledger.series(1)[0]!
-    expect(today.i).toBe(120)
-    expect(today.o).toBe(15)
+    expect(ledger.series(1)[0]!.i).toBe(120)
+    expect(ledger.series(1)[0]!.o).toBe(15)
   })
-
   it('does not collide across sessions with same turn/step', () => {
     const ledger = newLedger()
     ledger.record('s1', 1, 1, { inputTokens: 10, outputTokens: 1 })
     ledger.record('s2', 1, 1, { inputTokens: 20, outputTokens: 2 })
     expect(ledger.series(1)[0]!.i).toBe(30)
   })
-
   it('gap-fills the series with zero days', () => {
     const ledger = newLedger()
     const series = ledger.series(14)
     expect(series).toHaveLength(14)
-    expect(series[13]?.date).toBe(todayKey())
+    expect(series[13]!.date).toBe(todayKey())
     expect(series.every((d) => d.i === 0 && d.o === 0)).toBe(true)
   })
-
   it('persists across instances and survives reload', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'dshwb-'))
     tmpDirs.push(dir)
@@ -129,6 +122,33 @@ describe('DailyUsageLedger', () => {
   })
 })
 
+describe('ActivityRing + activityOf', () => {
+  it('extracts tool call events', () => {
+    const ev = activityOf('s1', { type: 'tool/call', turn: 1, data: { tool: 'bash' } })
+    expect(ev).toMatchObject({ kind: 'tool', label: 'bash', sessionKey: 's1' })
+  })
+  it('extracts tool result events with timing', () => {
+    const ev = activityOf('s1', { type: 'tool/result', turn: 1, data: { tool: 'read', ms: 150, ok: true } })
+    expect(ev).toMatchObject({ kind: 'tool', label: 'read', ms: 150, ok: true })
+  })
+  it('extracts approval requests', () => {
+    const ev = activityOf('s1', { type: 'approval/request', data: { action: 'bash' } })
+    expect(ev).toMatchObject({ kind: 'approval', label: 'bash' })
+  })
+  it('returns null for non-activity events', () => {
+    expect(activityOf('s1', { type: 'turn/start', turn: 1 })).toBeNull()
+  })
+  it('ring buffer returns newest first and caps at max', () => {
+    const ring = new ActivityRing(5)
+    for (let i = 0; i < 10; i++) {
+      ring.push({ ts: i, sessionKey: 's', kind: 'tool', label: 't' + i })
+    }
+    const recent = ring.recent(100)
+    expect(recent).toHaveLength(5)
+    expect(recent[0]!.ts).toBe(9)
+  })
+})
+
 const source = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8')
 
 describe('workbench-panel plugin (web client bundle)', () => {
@@ -136,27 +156,35 @@ describe('workbench-panel plugin (web client bundle)', () => {
     expect(source).toContain('window.__ModuleLoader__.load({')
     expect(source).toContain('"@dsh-workbench/panel-workbench"')
   })
-
-  it('exports a web plugin with connection inject', () => {
+  it('exports a web plugin with session-console injects', () => {
     expect(source).toContain('exports.apply = apply')
     expect(source).toContain('exports.inject = inject')
-    expect(source).toMatch(/var inject = \["connection"\]/)
+    expect(source).toMatch(/var inject = \["connection", "sessions", "workspaces"\]/)
   })
-
-  it('mounts a persistent floating panel reading real data', () => {
-    expect(source).toContain('dshwb-root')
+  it('renders session cards with workspace grouping and fork tags', () => {
+    expect(source).toContain('dshwb-scard')
+    expect(source).toContain('dshwb-wsgroup')
+    expect(source).toContain('parentSessionId')
+  })
+  it('renders an activity timeline reading from the host route', () => {
+    expect(source).toContain('dshwb-timeline')
+    expect(source).toContain('/api/workbench/activity')
+  })
+  it('reads real data through the connection RPC face', () => {
     expect(source).toContain('api.sessions.list({})')
+    expect(source).toContain('api.workspaces.list({})')
     expect(source).toContain('/api/workbench/usage-daily')
-    expect(source).toMatch(/v\.sessionStats/);
-    expect(source).toMatch(/v\.tokenUsage/)
   })
-
-  it('uses a self-contained palette (host theme vars broke text visibility)', () => {
+  it('supports tab switching between sessions, activity, and stats', () => {
+    expect(source).toContain('setTab("sessions")')
+    expect(source).toContain('setTab("activity")')
+    expect(source).toContain('setTab("stats")')
+  })
+  it('uses a self-contained palette (no host theme vars)', () => {
     expect(source).not.toMatch(/dsw-alias/)
     expect(source).not.toMatch(/background-clip:\s*text/)
   })
-
   it('declares the same version as the host side', () => {
-    expect(source).toMatch(/PLUGIN_VERSION = "0\.6\.1"/)
+    expect(source).toMatch(/PLUGIN_VERSION = "1\.0\.0"/)
   })
 })

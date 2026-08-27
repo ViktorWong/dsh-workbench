@@ -34,6 +34,7 @@ interface UsageEvent {
   data?: {
     usage?: UsageSample
     chunk?: { type: string; usage?: UsageSample }
+    [key: string]: unknown
   }
 }
 
@@ -46,7 +47,6 @@ export interface DayTotals {
 
 interface Store {
   days: Record<string, DayTotals>
-  /** Latest sample per session/turn/step — replacement semantics. */
   samples: Record<string, { date: string; usage: UsageSample }>
 }
 
@@ -73,12 +73,10 @@ export class DailyUsageLedger {
         this.store.samples = parsed.samples ?? {}
       }
     } catch {
-      // Corrupt ledger: start fresh rather than failing the plugin.
       this.store = { days: {}, samples: {} }
     }
   }
 
-  /** Record the latest usage sample for one session/turn/step. */
   record(sessionKey: string, turn: number | undefined, step: number | undefined, usage: UsageSample): void {
     if (this.disposed) return
     if (typeof usage.inputTokens !== 'number' || typeof usage.outputTokens !== 'number') return
@@ -101,7 +99,6 @@ export class DailyUsageLedger {
     this.scheduleFlush()
   }
 
-  /** Per-day series for the last `count` days, oldest first, gap-filled. */
   series(count = 14): Array<{ date: string } & DayTotals> {
     const out: Array<{ date: string } & DayTotals> = []
     const now = new Date()
@@ -109,8 +106,7 @@ export class DailyUsageLedger {
       const d = new Date(now)
       d.setUTCDate(d.getUTCDate() - k)
       const key = todayKey(d)
-      const totals = this.store.days[key] ?? zeroDay()
-      out.push({ date: key, ...totals })
+      out.push({ date: key, ...(this.store.days[key] ?? zeroDay()) })
     }
     return out
   }
@@ -141,7 +137,7 @@ export class DailyUsageLedger {
       mkdirSync(path.dirname(this.file), { recursive: true })
       writeFileSync(this.file, JSON.stringify(this.store))
     } catch {
-      // Persistence is best-effort; losing a day of counters is acceptable.
+      // Persistence is best-effort
     }
   }
 
@@ -152,6 +148,68 @@ export class DailyUsageLedger {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Activity ring buffer: recent tool/approval events for the timeline view.
+// ---------------------------------------------------------------------------
+
+export interface ActivityEvent {
+  ts: number
+  sessionKey: string
+  kind: 'tool' | 'approval' | 'session' | 'file'
+  /** Tool name, approval action, or session state */
+  label: string
+  /** Duration in ms (tool calls only) */
+  ms?: number
+  ok?: boolean
+}
+
+export class ActivityRing {
+  private buf: ActivityEvent[] = []
+  private readonly max: number
+
+  constructor(max = 200) {
+    this.max = max
+  }
+
+  push(ev: ActivityEvent): void {
+    this.buf.push(ev)
+    if (this.buf.length > this.max) this.buf.splice(0, this.buf.length - this.max)
+  }
+
+  /** Most recent `count` events, newest first. */
+  recent(count = 100): ActivityEvent[] {
+    return this.buf.slice(-count).reverse()
+  }
+}
+
+/** Extract activity-worthy info from a session event, or null. */
+export function activityOf(sessionKey: string, event: UsageEvent, now = Date.now()): ActivityEvent | null {
+  if (event.type === 'tool/call') {
+    const tool = (event.data as { tool?: string } | undefined)?.tool
+    return { ts: now, sessionKey, kind: 'tool', label: String(tool ?? 'unknown'), ok: true }
+  }
+  if (event.type === 'tool/result') {
+    const data = event.data as { tool?: string; ok?: boolean; ms?: number } | undefined
+    return {
+      ts: now,
+      sessionKey,
+      kind: 'tool',
+      label: String(data?.tool ?? 'unknown'),
+      ms: typeof data?.ms === 'number' ? data.ms : undefined,
+      ok: data?.ok !== false,
+    }
+  }
+  if (event.type === 'approval/request') {
+    const action = (event.data as { action?: string } | undefined)?.action
+    return { ts: now, sessionKey, kind: 'approval', label: String(action ?? 'unknown') }
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// Host plugin
+// ---------------------------------------------------------------------------
+
 function dshHome(): string {
   return process.env.DSH_HOME ?? path.join(homedir(), '.dsh')
 }
@@ -159,20 +217,12 @@ function dshHome(): string {
 /** The shell writes this file from its runtime auto-update checks (ADR-004). */
 function readRuntimeStatus(): unknown {
   try {
-    return JSON.parse(
-      readFileSync(path.join(dshHome(), 'workbench', 'runtime-status.json'), 'utf8'),
-    )
+    return JSON.parse(readFileSync(path.join(dshHome(), 'workbench', 'runtime-status.json'), 'utf8'))
   } catch {
     return { state: 'unknown' }
   }
 }
 
-/**
- * Diagnostics tool: when a user reports an issue, the agent can call this to
- * capture a snapshot of the workbench environment (runtime, versions, uptime)
- * without shell access. Output schema is plain strings so it renders in any
- * client.
- */
 const bootedAt = Date.now()
 const workbenchInfo = defineTool({
   name: 'workbench_info',
@@ -184,43 +234,50 @@ const workbenchInfo = defineTool({
     render: (_args, value) => [{ type: 'text', text: value }],
   },
   async execute() {
-    const lines = [
+    return [
       `dsh-workbench panel: v${PLUGIN_VERSION}`,
       `node: ${process.version}`,
       `platform: ${process.platform} (${process.arch})`,
       `dsh home: ${process.env.DSH_HOME ?? '~/.dsh (default)'}`,
       `uptime: ${Math.round((Date.now() - bootedAt) / 1000)}s`,
       `pid: ${process.pid}`,
-    ]
-    return lines.join('\n')
+    ].join('\n')
   },
 })
 
 interface WebRoute {
   kind: 'exact' | 'prefix'
   path: string
-  handler: (req: unknown, res: {
-    setHeader: (k: string, v: string) => void
-    end: (body: string) => void
-  }) => void | Promise<void>
+  handler: (
+    req: unknown,
+    res: { setHeader: (k: string, v: string) => void; end: (body: string) => void },
+  ) => void | Promise<void>
 }
 
 export function apply(ctx: Context): void {
-  // stdout probe: lands in the shell's forwarded dsh output (smoke evidence).
   console.log('[workbench-panel] host apply: start')
   ctx.tools.register(workbenchInfo)
 
   const ledger = new DailyUsageLedger(path.join(dshHome(), 'workbench', 'usage-daily.json'))
+  const activity = new ActivityRing(200)
 
   const offEvents = ctx.on('session/event', (session: object, event: SessionEvent) => {
-    const usage = usageOf(event as unknown as UsageEvent)
-    if (!usage) return
-    const sessionKey = String((session as { id?: unknown }).id ?? 's')
     const typed = event as unknown as UsageEvent
-    ledger.record(sessionKey, typed.turn, typed.step, usage)
+    // Token usage folding
+    const usage = usageOf(typed)
+    if (usage) {
+      const sessionKey = String((session as { id?: unknown }).id ?? 's')
+      ledger.record(sessionKey, typed.turn, typed.step, usage)
+    }
+    // Activity timeline
+    const sessionKey = String((session as { id?: unknown }).id ?? 's')
+    const activityEv = activityOf(sessionKey, typed)
+    if (activityEv) activity.push(activityEv)
   })
 
-  const offRoute = (ctx as Context & { webServer: { register: (r: WebRoute) => () => void } }).webServer.register({
+  const registerRoute = (ctx as Context & { webServer: { register: (r: WebRoute) => () => void } }).webServer
+
+  const offUsageRoute = registerRoute.register({
     kind: 'exact',
     path: '/api/workbench/usage-daily',
     handler: (_req, res) => {
@@ -229,7 +286,16 @@ export function apply(ctx: Context): void {
     },
   })
 
-  const offStatusRoute = (ctx as Context & { webServer: { register: (r: WebRoute) => () => void } }).webServer.register({
+  const offActivityRoute = registerRoute.register({
+    kind: 'exact',
+    path: '/api/workbench/activity',
+    handler: (_req, res) => {
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ events: activity.recent(100) }))
+    },
+  })
+
+  const offStatusRoute = registerRoute.register({
     kind: 'exact',
     path: '/api/workbench/runtime-status',
     handler: (_req, res) => {
@@ -241,14 +307,17 @@ export function apply(ctx: Context): void {
   ctx.effect(() => {
     return () => {
       offEvents()
-      offRoute()
+      offUsageRoute()
+      offActivityRoute()
       offStatusRoute()
       ledger.dispose()
     }
   })
 
   ctx.effect(() => {
-    ctx.logger.info('[workbench-panel] loaded, tool workbench_info registered, usage-daily route served')
+    ctx.logger.info(
+      '[workbench-panel] loaded: workbench_info tool, usage-daily + activity + runtime-status routes',
+    )
     return () => ctx.logger.info('[workbench-panel] unloaded')
   })
 }

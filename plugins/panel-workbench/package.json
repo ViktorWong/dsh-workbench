@@ -1,7 +1,7 @@
 {
   "name": "@dsh-workbench/panel-workbench",
-  "version": "0.6.1",
-  "description": "Workbench panel plugin: floating stats + daily usage trends + runtime update status",
+  "version": "1.0.0",
+  "description": "Workbench session console: session cards, activity timeline, usage stats, runtime auto-update",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.mjs",
