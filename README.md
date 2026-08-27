@@ -45,6 +45,13 @@ docs/design/           # 设计文档与 ADR
 
 本仓库内置一套多智能体开发配置（6 个 dsh-* 智能体 + 共享基础设施），支持 Claude / ZCode / OpenCode 三种 harness。详见 [docs/agents-design/README.md](docs/agents-design/README.md) 与 [AGENTS.md](AGENTS.md)。
 
+## 安全与签名
+
+当前发布产物**未签名**（签名证书方案见 [ADR-003](docs/design/adr/003-signing-notarization-update-channel.md)，证书就绪后同一流水线自动切换为签名+公证包）：
+
+- **macOS**：首次打开若被拦截，右键点击应用 →「打开」，或执行 `xattr -cr /Applications/dsh-workbench.app`
+- **Windows**：SmartScreen 提示时选择「更多信息 → 仍要运行」
+
 ## License
 
 MIT

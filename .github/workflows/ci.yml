@@ -3,7 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+
+permissions:
+  contents: write
 
 jobs:
   verify:
@@ -29,5 +33,57 @@ jobs:
       - run: pnpm build
       - run: pnpm pack:plugins
 
-  # Release pipeline (tag v*) and packaging matrix are added when the desktop
-  # app reaches its first releasable milestone — see dsh-devops agent spec.
+  release:
+    name: release (${{ matrix.os }})
+    # Only on version tags; unsigned builds are published when signing
+    # secrets are absent (see ADR-003 §2.5).
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --mac --x64 --arm64
+          - os: windows-latest
+            args: --win
+          - os: ubuntu-latest
+            args: --linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm pack:plugins
+        # Publish the plugin tarballs as Release assets as well.
+      - name: Collect plugin tarballs
+        shell: bash
+        run: |
+          mkdir -p apps/desktop/resources/plugins
+          cp plugins/*/*.tgz apps/desktop/resources/plugins/ || true
+      - run: pnpm --filter @dsh-workbench/desktop prepare-runtime
+      - name: Build installers (signing only when secrets exist)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          ARGS="${{ matrix.args }}"
+          if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            ARGS="$ARGS --config.mac.notarize=true --config.mac.hardenedRuntime=true"
+          fi
+          cd apps/desktop
+          NODE_OPTIONS=--max-old-space-size=8192 ../../node_modules/.bin/electron-builder $ARGS --publish always
