@@ -14,7 +14,7 @@
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		var PLUGIN_VERSION = "0.5.0";
+		var PLUGIN_VERSION = "0.6.0";
 
 		// Service keys (same semantics as host-side cordis inject), as a
 		// STATIC ARRAY — the web loader reads it before the fiber runs.
@@ -50,6 +50,7 @@
 			".dshwb-empty{color:var(--dsw-alias-label-tertiary,#888);font-size:12px;padding:8px 0;}",
 			".dshwb-err{color:#ff5e8a;font-size:12px;padding:8px 0;}",
 			".dshwb-foot{padding:8px 14px;border-top:1px solid rgba(255,255,255,.08);color:var(--dsw-alias-label-tertiary,#888);font-size:10.5px;}",
+			".dshwb-runtime{margin-bottom:10px;padding:6px 10px;border:1px solid rgba(130,87,255,.35);border-radius:8px;background:rgba(130,87,255,.08);font-size:11.5px;color:var(--dsw-alias-label-secondary,#bbb);font-variant-numeric:tabular-nums;}",
 		].join("\n");
 
 		function fmtTokens(n) {
@@ -173,7 +174,15 @@
 				else if (!state.data) body = el("div", { class: "dshwb-empty", text: "加载中…" });
 				else {
 					var t = state.data.totals;
+					var runtimeLine = null;
+					if (state.runtime) {
+						var badge = { updated: "✓ 已升级", checking: "…检查更新", "skipped-major": "⚠ 新大版本待手动升级", error: "✗ 升级失败", idle: "", reset: "", unknown: "" }[state.runtime.state] || "";
+						var ver = state.runtime.current ? "runtime v" + state.runtime.current : "";
+						var parts = [ver, badge].filter(Boolean).join(" · ");
+						if (parts) runtimeLine = el("div", { class: "dshwb-runtime", text: parts });
+					}
 					body = el("div", null, [
+						runtimeLine,
 						el("div", { class: "dshwb-grid" }, [
 							el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "会话 / 进行中" }), el("div", { class: "v", text: t.sessions + " / " + t.active })]),
 							el("div", { class: "dshwb-cell" }, [el("div", { class: "l", text: "轮次 / 步骤" }), el("div", { class: "v", text: t.turns + " / " + t.steps })]),
@@ -235,6 +244,12 @@
 					state.daily = await fetchDaily();
 				} catch {
 					state.daily = null;
+				}
+				try {
+					var rt = await fetch("/api/workbench/runtime-status", { headers: { accept: "application/json" } });
+					state.runtime = rt.ok ? await rt.json() : null;
+				} catch {
+					state.runtime = null;
 				}
 				render();
 			}

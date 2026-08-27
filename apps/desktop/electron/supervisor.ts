@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import * as net from 'node:net'
-import { sanitizedChildEnv } from './provisioning'
+import { sanitizedChildEnv } from './env'
 
 export interface SupervisorOptions {
   /** Absolute path of the dsh CLI entry (lib/bin.js). */

@@ -1,7 +1,7 @@
 {
   "name": "@dsh-workbench/panel-workbench",
-  "version": "0.5.0",
-  "description": "Workbench panel plugin for DeepSeek Harness: floating stats panel, daily usage trends, diagnostics tool",
+  "version": "0.6.0",
+  "description": "Workbench panel plugin: floating stats + daily usage trends + runtime update status",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.mjs",

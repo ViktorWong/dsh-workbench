@@ -18,7 +18,12 @@ writeFileSync(
     {
       name: 'dsh-workbench-runtime',
       private: true,
-      dependencies: { '@deepseek-ai/dsh': DSH_VERSION },
+      dependencies: {
+        '@deepseek-ai/dsh': DSH_VERSION,
+        // Bundled package manager so the runtime can self-update without any
+        // external tooling (ADR-004 §2.2).
+        pnpm: '^10.0.0',
+      },
     },
     null,
     2,

@@ -45,18 +45,18 @@ describe('workbench-panel plugin (host side)', () => {
     expect(inject).toEqual(['tools', 'webServer'])
   })
 
-  it('registers the workbench_info tool and the usage-daily route', () => {
+  it('registers the workbench_info tool and both API routes', () => {
     const ctx = fakeCtx()
     apply(ctx as never)
     expect(ctx.tools.register).toHaveBeenCalledOnce()
     expect((ctx.tools.register.mock.calls[0]?.[0] as { name: string }).name).toBe('workbench_info')
-    expect(ctx.webServer.register).toHaveBeenCalledOnce()
-    const route = ctx.webServer.register.mock.calls[0]?.[0] as unknown as {
-      kind: string
-      path: string
-    }
-    expect(route.kind).toBe('exact')
-    expect(route.path).toBe('/api/workbench/usage-daily')
+    expect(ctx.webServer.register).toHaveBeenCalledTimes(2)
+    const paths = ctx.webServer.register.mock.calls.map(
+      (call) => (call[0] as unknown as { path: string }).path,
+    )
+    expect(paths).toEqual(
+      expect.arrayContaining(['/api/workbench/usage-daily', '/api/workbench/runtime-status']),
+    )
     // The effect must DISPOSE on unload, not immediately during apply.
     expect(ctx.effect.mock.calls[0]?.[0] as unknown).toBeTypeOf('function')
     for (const cleanup of ctx.cleanups) cleanup()
@@ -152,6 +152,6 @@ describe('workbench-panel plugin (web client bundle)', () => {
   })
 
   it('declares the same version as the host side', () => {
-    expect(source).toMatch(/PLUGIN_VERSION = "0\.5\.0"/)
+    expect(source).toMatch(/PLUGIN_VERSION = "0\.6\.0"/)
   })
 })

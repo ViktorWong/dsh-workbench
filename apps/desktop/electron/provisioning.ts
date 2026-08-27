@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process'
+import { sanitizedChildEnv } from './env'
+import { resolveDshBin } from './runtime-manager'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { app } from 'electron'
 
 /** Bundles every workbench profile must compose, in order. */
 const BASE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app']
@@ -96,24 +97,6 @@ function ensureBaseBundles(profile: string): void {
   }
 }
 
-/**
- * dsh spawns pnpm inside the profile dir; inherited workspace context from
- * our own launcher (`pnpm exec` sets INIT_CWD/npm_config_* pointing at the
- * repo) makes that pnpm refuse with ERR_PNPM_ADDING_TO_ROOT. Strip the leak.
- */
-export function sanitizedChildEnv(): Record<string, string> {
-  const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value === undefined) continue
-    if (key === 'INIT_CWD' || key.startsWith('PNPM_') || key.startsWith('npm_')) continue
-    env[key] = value
-  }
-  // Belt and braces: any pnpm the dsh child resolves must never refuse the
-  // profile-dir install with ERR_PNPM_ADDING_TO_ROOT.
-  env.npm_config_ignore_workspace_root_check = 'true'
-  return env
-}
-
 async function runDshPlugin(
   args: string[],
   opts: { allowFail?: boolean; retries?: number } = {},
@@ -140,15 +123,3 @@ async function runDshPlugin(
   }
 }
 
-/**
- * Where the packaged app finds the dsh CLI: a standalone runtime install
- * shipped via extraResources (real files outside asar — dsh's module
- * resolution cannot live inside asar; see ADR-002 §6 item 8). Dev runs
- * resolve from the workspace node_modules instead.
- */
-export function resolveDshBin(): string {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'runtime', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-  }
-  return require.resolve('@deepseek-ai/dsh/lib/bin.js')
-}

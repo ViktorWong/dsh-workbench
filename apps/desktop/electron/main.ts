@@ -2,10 +2,22 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Tray } from 'el
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { DshSupervisor } from './supervisor'
-import { provisionProfile, resolveDshBin } from './provisioning'
+import { provisionProfile } from './provisioning'
+import { resolveDshBin } from './runtime-manager'
+import {
+  ensureRuntime,
+  fetchLatestDshVersion,
+  runtimeVersion,
+  shouldAutoUpdate,
+  updateRuntime,
+  userRuntimeDir,
+  writeRuntimeStatus,
+} from './runtime-manager'
 
 const PROFILE = 'dsh-workbench'
 const PREFERRED_PORT = 3080
+const UPDATE_CHECK_INITIAL_MS = 10_000
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1_000
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -77,7 +89,49 @@ function maybeSmoke(): void {
   }, delay)
 }
 
+/**
+ * ADR-004: poll npm dist-tags for a newer dsh; same-major releases upgrade
+ * the userData runtime in the background (applies on next launch). Offline
+ * checks fail silently.
+ */
+function scheduleUpdateChecks(): void {
+  const check = async (): Promise<void> => {
+    const current = runtimeVersion(userRuntimeDir())
+    if (!current) return
+    writeRuntimeStatus({ state: 'checking', current })
+    const latest = await fetchLatestDshVersion()
+    if (!latest) {
+      writeRuntimeStatus({ state: 'idle', current })
+      return
+    }
+    if (!shouldAutoUpdate(current, latest)) {
+      const note = current === latest ? 'up to date' : `new major ${latest} requires manual upgrade`
+      writeRuntimeStatus({ state: current === latest ? 'idle' : 'skipped-major', current, latest, note })
+      return
+    }
+    console.log(`[workbench] dsh ${latest} available (have ${current}); updating runtime…`)
+    const result = updateRuntime(latest)
+    writeRuntimeStatus({
+      state: result.ok ? 'updated' : 'error',
+      current: runtimeVersion(userRuntimeDir()),
+      latest,
+      note: result.note,
+    })
+    console.log(`[workbench] runtime update: ${result.ok ? 'ok' : 'failed'} — ${result.note}`)
+  }
+  setTimeout(() => void check().catch(() => writeRuntimeStatus({ state: 'error' })), UPDATE_CHECK_INITIAL_MS)
+  setInterval(() => void check().catch(() => writeRuntimeStatus({ state: 'error' })), UPDATE_CHECK_INTERVAL_MS)
+}
+
 async function bootstrap(): Promise<void> {
+  // ADR-004: work on the userData runtime copy (first boot clones the
+  // bundled template); auto-update never touches the app bundle itself.
+  if (app.isPackaged) {
+    ensureRuntime()
+    console.log(`[workbench] runtime ${runtimeVersion(userRuntimeDir())} at ${userRuntimeDir()}`)
+    scheduleUpdateChecks()
+  }
+
   // ADR-002: install companion plugins into the dedicated profile.
   // Non-fatal: on failure we boot with dsh-base only and surface a warning.
   await provisionProfile(PROFILE).catch((err) => {

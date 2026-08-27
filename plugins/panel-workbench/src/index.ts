@@ -156,6 +156,17 @@ function dshHome(): string {
   return process.env.DSH_HOME ?? path.join(homedir(), '.dsh')
 }
 
+/** The shell writes this file from its runtime auto-update checks (ADR-004). */
+function readRuntimeStatus(): unknown {
+  try {
+    return JSON.parse(
+      readFileSync(path.join(dshHome(), 'workbench', 'runtime-status.json'), 'utf8'),
+    )
+  } catch {
+    return { state: 'unknown' }
+  }
+}
+
 /**
  * Diagnostics tool: when a user reports an issue, the agent can call this to
  * capture a snapshot of the workbench environment (runtime, versions, uptime)
@@ -218,10 +229,20 @@ export function apply(ctx: Context): void {
     },
   })
 
+  const offStatusRoute = (ctx as Context & { webServer: { register: (r: WebRoute) => () => void } }).webServer.register({
+    kind: 'exact',
+    path: '/api/workbench/runtime-status',
+    handler: (_req, res) => {
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify(readRuntimeStatus()))
+    },
+  })
+
   ctx.effect(() => {
     return () => {
       offEvents()
       offRoute()
+      offStatusRoute()
       ledger.dispose()
     }
   })
