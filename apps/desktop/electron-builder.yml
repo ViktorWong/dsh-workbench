@@ -1,5 +1,7 @@
 appId: com.dshworkbench.desktop
 productName: dsh-workbench
+# AppImage/NSIS binary name — must be filename-safe (package name is not).
+executableName: dsh-workbench
 directories:
   output: release
 files:
