@@ -1,6 +1,6 @@
 {
   "name": "@dsh-workbench/panel-workbench",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Workbench panel plugin: floating stats + daily usage trends + runtime update status",
   "license": "MIT",
   "type": "module",

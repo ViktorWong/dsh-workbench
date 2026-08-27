@@ -39,6 +39,14 @@ app.whenReady().then(async () => {
       foot: (document.querySelector('.dshwb-foot') || {}).textContent || '',
     }))()`)
     console.log('PANEL_EXPANDED', JSON.stringify(expanded, null, 1))
+    // Visual acceptance: save a screenshot of the expanded panel.
+    await new Promise((r) => setTimeout(r, 500))
+    const shot = await win.webContents.capturePage()
+    require('node:fs').writeFileSync(
+      process.env.PANEL_SHOT ?? '/tmp/panel-shot.png',
+      shot.toPNG(),
+    )
+    console.log('PANEL_SHOT saved')
   }
   console.log('CONSOLE:', logs.slice(-8).join('\n'))
   app.quit()

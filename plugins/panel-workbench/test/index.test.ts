@@ -151,7 +151,12 @@ describe('workbench-panel plugin (web client bundle)', () => {
     expect(source).toMatch(/v\.tokenUsage/)
   })
 
+  it('uses a self-contained palette (host theme vars broke text visibility)', () => {
+    expect(source).not.toMatch(/dsw-alias/)
+    expect(source).not.toMatch(/background-clip:\s*text/)
+  })
+
   it('declares the same version as the host side', () => {
-    expect(source).toMatch(/PLUGIN_VERSION = "0\.6\.0"/)
+    expect(source).toMatch(/PLUGIN_VERSION = "0\.6\.1"/)
   })
 })
