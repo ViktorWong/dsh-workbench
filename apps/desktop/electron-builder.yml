@@ -2,6 +2,9 @@ appId: com.dshworkbench.desktop
 productName: dsh-workbench
 # AppImage/NSIS binary name — must be filename-safe (package name is not).
 executableName: dsh-workbench
+# Uniform artifact names; also fixes deb deriving a "@dsh-workbench/" dir
+# from the scoped package name.
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 directories:
   output: release
 files:
