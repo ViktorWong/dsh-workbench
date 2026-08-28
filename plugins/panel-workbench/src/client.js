@@ -6,7 +6,7 @@
 //
 // Data sources:
 //   api.sessions.list()     — session cards + fork lineage + workspace grouping
-//   api.workspaces.list()   — workspace titles for grouping
+//   api.workspace.list()   — workspace titles for grouping
 //   /api/workbench/*        — host plugin routes (usage, activity, runtime)
 window.__ModuleLoader__.load({
 	id: "@dsh-workbench/panel-workbench",
@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		var PLUGIN_VERSION = "1.2.1";
+		var PLUGIN_VERSION = "1.2.2";
 
 		// Only inject "connection": the session/workspace data comes through
 		// the connection service's RPC face (ctx.get("connection").api.sessions
@@ -202,7 +202,7 @@ window.__ModuleLoader__.load({
 		async function fetchAll(api) {
 			var sessionsRes = await api.sessions.list({});
 			var sessions = sessionsRes.result.ok ? sessionsRes.result.value.items : [];
-			var wsRes = await api.workspaces.list({});
+			var wsRes = await api.workspace.list({});
 			var workspaces = wsRes.result.ok ? wsRes.result.value.items : [];
 			return { sessions, workspaces };
 		}

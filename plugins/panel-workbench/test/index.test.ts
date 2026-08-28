@@ -173,7 +173,7 @@ describe('workbench-panel plugin (web client bundle)', () => {
   })
   it('reads real data through the connection RPC face', () => {
     expect(source).toContain('api.sessions.list({})')
-    expect(source).toContain('api.workspaces.list({})')
+    expect(source).toContain('api.workspace.list({})')
     expect(source).toContain('/api/workbench/usage-daily')
   })
   it('supports tab switching between sessions, activity, and stats', () => {
@@ -186,6 +186,6 @@ describe('workbench-panel plugin (web client bundle)', () => {
     expect(source).not.toMatch(/background-clip:\s*text/)
   })
   it('declares the same version as the host side', () => {
-    expect(source).toMatch(/PLUGIN_VERSION = "1\.2\.1"/)
+    expect(source).toMatch(/PLUGIN_VERSION = "1\.2\.2"/)
   })
 })
