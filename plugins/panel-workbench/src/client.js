@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		var PLUGIN_VERSION = "1.2.0";
+		var PLUGIN_VERSION = "1.2.1";
 
 		// Only inject "connection": the session/workspace data comes through
 		// the connection service's RPC face (ctx.get("connection").api.sessions
@@ -364,7 +364,7 @@ window.__ModuleLoader__.load({
 				]);
 			}
 
-		function createPanel(ctx) {
+		function createPanel(ctx, resolvedApi) {
 			var styleEl = el("style", { "data-plugin": "@dsh-workbench/panel-workbench" });
 			styleEl.textContent = STYLE;
 			document.head.appendChild(styleEl);
@@ -377,7 +377,7 @@ window.__ModuleLoader__.load({
 				error: null, cards: [],
 				searchQuery: "",
 			};
-			var api = null;
+			var api = resolvedApi; // injected from apply's retry loop
 			var timer = null;
 			var activityTimer = null;
 			var lastApprovalTs = 0;
@@ -601,7 +601,7 @@ window.__ModuleLoader__.load({
 				if (state.tab === "activity") render();
 			}
 
-			api = ctx.get("connection").api;
+			// api is already set from the parameter; no need to re-resolve
 			render();
 			refresh();
 			refreshActivity();
@@ -618,14 +618,50 @@ window.__ModuleLoader__.load({
 
 		function apply(ctx) {
 			var dispose = null;
-			var mount = function () {
-				if (document.body) {
-					dispose = createPanel(ctx);
-					console.warn("[workbench-panel] session console mounted v" + PLUGIN_VERSION);
+
+			// Safely resolve the connection API with retries — the connection
+			// service may be registered before its transport is fully ready.
+			function resolveApi(attempt) {
+				if (attempt > 10) {
+					console.warn("[workbench-panel] could not resolve connection.api after 10 retries");
+					return null;
 				}
-			};
+				try {
+					var conn = ctx.get("connection");
+					if (conn && conn.api && conn.api.sessions && typeof conn.api.sessions.list === "function") {
+						return conn.api;
+					}
+				} catch {
+					// service not yet available
+				}
+				return null; // caller retries
+			}
+
+			function mount() {
+				if (!document.body) return;
+				// Try to resolve API with backoff, then create the panel
+				var api = null;
+				var attempts = 0;
+				var tryInit = function () {
+					attempts++;
+					api = resolveApi(attempts);
+					if (api) {
+						dispose = createPanel(ctx, api);
+						console.warn("[workbench-panel] session console mounted v" + PLUGIN_VERSION + " (api ready after " + attempts + " attempts)");
+					} else if (attempts < 10) {
+						setTimeout(tryInit, 500 * attempts); // 500ms, 1s, 1.5s... backoff
+					} else {
+						// Last resort: mount without API (shows "加载中")
+						dispose = createPanel(ctx, null);
+						console.warn("[workbench-panel] mounted without API (connection not ready)");
+					}
+				};
+				tryInit();
+			}
+
 			if (document.body) mount();
 			else document.addEventListener("DOMContentLoaded", mount);
+
 			ctx.effect(function () {
 				return function () {
 					document.removeEventListener("DOMContentLoaded", mount);
