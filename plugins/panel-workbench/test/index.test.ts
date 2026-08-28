@@ -157,18 +157,18 @@ describe('workbench-panel plugin (web client bundle)', () => {
     expect(source).toContain('window.__ModuleLoader__.load({')
     expect(source).toContain('"@dsh-workbench/panel-workbench"')
   })
-  it('exports a web plugin with connection inject', () => {
+  it('exports a web plugin with settings + connection injects', () => {
     expect(source).toContain('exports.apply = apply')
     expect(source).toContain('exports.inject = inject')
-    expect(source).toMatch(/var inject = \["connection"\]/)
+    expect(source).toMatch(/var inject = \["slots", "connection"\]/)
   })
   it('renders session cards with workspace grouping and fork tags', () => {
-    expect(source).toContain('dshwb-scard')
-    expect(source).toContain('dshwb-wsgroup')
+    expect(source).toContain('SessionCard')
     expect(source).toContain('parentSessionId')
+    expect(source).toContain('buildCards')
   })
   it('renders an activity timeline reading from the host route', () => {
-    expect(source).toContain('dshwb-timeline')
+    expect(source).toContain('fetchActivity')
     expect(source).toContain('/api/workbench/activity')
   })
   it('reads real data through the connection RPC face', () => {
@@ -177,15 +177,15 @@ describe('workbench-panel plugin (web client bundle)', () => {
     expect(source).toContain('/api/workbench/usage-daily')
   })
   it('supports tab switching between sessions, activity, and stats', () => {
-    expect(source).toContain('setTab("sessions")')
-    expect(source).toContain('setTab("activity")')
-    expect(source).toContain('setTab("stats")')
+    expect(source).toContain('setTab(id)')
+    expect(source).toContain('tabBtn("activity"')
+    expect(source).toContain('tabBtn("stats"')
   })
   it('uses a self-contained palette (no host theme vars)', () => {
     expect(source).not.toMatch(/dsw-alias/)
     expect(source).not.toMatch(/background-clip:\s*text/)
   })
   it('declares the same version as the host side', () => {
-    expect(source).toMatch(/PLUGIN_VERSION = "1\.2\.2"/)
+    expect(source).toMatch(/PLUGIN_VERSION = "1\.3\.0"/)
   })
 })
